@@ -5,6 +5,7 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 import "Newmarchy.js" as N
+import "Features.js" as F
 
 Panel {
   id: root
@@ -31,6 +32,7 @@ Panel {
   // only refetches when the last good fetch is older than this.
   readonly property int refetchAfterMs: 10 * 60 * 1000
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/newmarchy"
+  readonly property string detectScript: String(Qt.resolvedUrl("bin/newmarchy-detect")).replace(/^file:\/\//, "")
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color accent: Color.accent
@@ -57,6 +59,8 @@ Panel {
   property var rows: []
   property int cursor: 0
   property bool returnPending: false
+  // Signals from the last run of bin/newmarchy-detect.
+  property var detectedSignals: []
 
   readonly property int unseen: N.unseenCount(root.installedNotes, root.seen)
   // The header counts what the badge counts: breaking changes and highlights
@@ -88,7 +92,15 @@ Panel {
   }
 
   function refreshRows() {
-    root.rows = N.rows(root.notes, root.seen, root.collapsed, root.expanded);
+    var list = N.rows(root.notes, root.seen, root.collapsed, root.expanded);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].kind !== "item")
+        continue;
+      var feature = F.featureFor(root.notes.tag, list[i].title);
+      list[i].tryLabel = feature && feature.try ? feature.tryLabel : "";
+      list[i].detected = list[i].seen && N.wasAutoTicked(root.seen, root.notes.tag, list[i].id);
+    }
+    root.rows = list;
     if (root.cursor >= root.rows.length)
       root.cursor = Math.max(0, root.rows.length - 1);
   }
@@ -187,6 +199,34 @@ Panel {
     list.positionViewAtIndex(root.cursor, ListView.Contain);
   }
 
+  // Ticks whatever the detector has seen you use, in the release you are
+  // running. Each item is ticked at most once (see N.applyDetected).
+  function applyDetection() {
+    if (!root.installedNotes || root.detectedSignals.length === 0)
+      return;
+    var result = N.applyDetected(root.seen, root.installedNotes.tag, F.detectedIds(root.installedNotes, root.detectedSignals));
+    if (result.ticked.length > 0)
+      root.saveSeen(result.seen);
+  }
+
+  function detect() {
+    if (!detectProcess.running)
+      detectProcess.running = true;
+  }
+
+  // Opens the feature and ticks the item. The panel closes first so a menu
+  // or panel the command opens is not hidden behind it.
+  function tryRow(row) {
+    if (!row || row.kind !== "item" || !root.notes)
+      return;
+    var feature = F.featureFor(root.notes.tag, row.title);
+    if (!feature || !feature.try)
+      return;
+    root.setChecked([row.id], true);
+    root.close();
+    Quickshell.execDetached(feature.try);
+  }
+
   function openNotes() {
     var url = root.notes ? root.notes.url : N.RELEASES_PAGE;
     Quickshell.execDetached(["omarchy-launch-browser", url]);
@@ -225,6 +265,7 @@ Panel {
     root.fetchedAt = Date.now();
     root.errorText = "";
     root.rebuild();
+    root.applyDetection();
   }
 
   function networkError(exitCode) {
@@ -240,6 +281,7 @@ Panel {
     if (!root.opened)
       return;
     versionProcess.running = true;
+    root.detect();
     root.fetchReleases(false);
     // Opening from the bar starts on the release you are running.
     if (root.installedTag !== "" && root.currentTag !== root.installedTag)
@@ -252,6 +294,7 @@ Panel {
   Component.onCompleted: {
     Quickshell.execDetached(["mkdir", "-p", root.stateDir]);
     versionProcess.running = true;
+    root.detect();
     root.fetchReleases(true);
   }
 
@@ -291,7 +334,25 @@ Panel {
     interval: 60 * 60 * 1000
     running: true
     repeat: true
-    onTriggered: versionProcess.running = true
+    onTriggered: {
+      versionProcess.running = true;
+      root.detect();
+    }
+  }
+
+  // Local and read-only; see bin/newmarchy-detect. Its output is a handful
+  // of words, matched against a fixed list.
+  Process {
+    id: detectProcess
+
+    command: ["bash", root.detectScript]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.detectedSignals = F.parseSignals(String(text || "").slice(0, 4096));
+        root.applyDetection();
+      }
+    }
   }
 
   Process {
@@ -398,6 +459,8 @@ Panel {
       onTextKey: function (text) {
         if (text === "r")
           root.fetchReleases(true);
+        else if (text === "t")
+          root.tryRow(root.rows[root.cursor]);
       }
 
       Column {
@@ -647,7 +710,7 @@ Panel {
                 leftMargin: Style.spacing.rowPaddingX
                 rightMargin: Style.spacing.rowPaddingX
               }
-              implicitHeight: visible ? itemText.implicitHeight : 0
+              implicitHeight: visible ? Math.max(itemText.implicitHeight, tryButton.visible ? tryButton.implicitHeight : 0) : 0
 
               Text {
                 id: itemCheck
@@ -673,11 +736,27 @@ Panel {
                 }
               }
 
+              Button {
+                id: tryButton
+
+                anchors.right: parent.right
+                anchors.top: parent.top
+                visible: !rowItem.isSection && String(rowItem.modelData.tryLabel || "") !== ""
+                text: String(rowItem.modelData.tryLabel || "")
+                tooltipText: strings.t("action.tryTooltip")
+                bordered: true
+                foreground: rowItem.ink
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                onClicked: root.tryRow(rowItem.modelData)
+              }
+
               Column {
                 id: itemText
 
                 anchors.left: itemCheck.right
-                anchors.right: parent.right
+                anchors.right: tryButton.visible ? tryButton.left : parent.right
+                anchors.rightMargin: tryButton.visible ? Style.space(10) : 0
                 anchors.top: parent.top
                 spacing: Style.space(4)
 
@@ -693,6 +772,17 @@ Panel {
                   wrapMode: Text.WordWrap
                   maximumLineCount: rowItem.modelData.expanded ? 6 : 2
                   elide: Text.ElideRight
+                }
+
+                Text {
+                  width: parent.width
+                  visible: !!rowItem.modelData.detected
+                  text: strings.t("item.detected")
+                  textFormat: Text.PlainText
+                  color: rowItem.hot ? rowItem.ink : root.accent
+                  opacity: 0.8
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
                 }
 
                 Text {

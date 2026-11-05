@@ -386,6 +386,29 @@ function keyProgress(notes, seen) {
   return result
 }
 
+// Detection ticks an item once. The ids it has ticked are remembered under
+// "auto-<tag>", so an item you untick afterwards stays unticked instead of
+// being ticked again on the next check.
+function autoKey(tag) {
+  return "auto-" + tag
+}
+
+function wasAutoTicked(seen, tag, id) {
+  return isSeen(seen, autoKey(tag), id)
+}
+
+// Returns { seen, ticked }: the new map, and the ids newly ticked (empty
+// when nothing changed, so the caller can skip a write).
+function applyDetected(seen, tag, ids) {
+  var fresh = []
+  for (var i = 0; i < ids.length; i++)
+    if (!wasAutoTicked(seen, tag, ids[i]) && fresh.indexOf(ids[i]) < 0) fresh.push(ids[i])
+  if (fresh.length === 0) return { seen: seen, ticked: [] }
+  var next = setSeen(seen, autoKey(tag), fresh, true)
+  next = setSeen(next, tag, fresh, true)
+  return { seen: next, ticked: fresh }
+}
+
 // Items the bar badge counts as still to see.
 function unseenCount(notes, seen) {
   var progress = keyProgress(notes, seen)

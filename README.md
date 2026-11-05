@@ -11,6 +11,11 @@ after an update you can tell what's new and know you've actually seen it.
   open with a click.
 - **Click an item** to read its full text, and **tick its box** once you've
   seen it. A section's box ticks the whole section.
+- **Try it** buttons sit beside items that have something to open: the
+  language picker, workspace layouts, Elsewhen, the Quake console, the theme
+  menu, a test notification card. Pressing one opens the feature and ticks
+  the item.
+- **Ticks itself** when it can see you've used something new (see below).
 - **‹ ›** step to older and newer releases, so an update that skipped several
   versions can be caught up on. **Right-click** the icon to open the release
   on GitHub.
@@ -28,6 +33,7 @@ omarchy plugin add https://github.com/yamz8/newmarchy.git --enable
 | ↑ ↓ / j k | Move |
 | Space | Check or uncheck the item; fold a section |
 | Enter | Open the item's text; fold a section |
+| t | Try it, when the item has a Try button |
 | ← → | Older / newer release |
 | r | Refetch release notes |
 | Esc | Close |
@@ -56,6 +62,28 @@ notes and says so in the header.
 The installed version is read locally with `omarchy-version`, once an hour
 and whenever the panel opens, so the badge follows an update without a shell
 restart.
+
+## What it can tell you've tried
+
+`bin/newmarchy-detect` checks local state, read-only and offline, when the
+shell starts, when the panel opens, and once an hour. For 4.5.0 it ticks:
+
+| Item | Signal |
+| --- | --- |
+| Omarchy in 50 languages | `omarchy-language` is not `en` |
+| Floating workspaces with a dock | a workspace layout file says `floating` |
+| Quake-style terminal console | the `special:qconsole` workspace exists |
+| Elsewhen world clock | Elsewhen has cities of your own in `shell.json` |
+| Video wallpapers | the current background is a video file |
+| Hype, Signed, Disktree, Monologue | one of them has a config or state directory |
+| Starship and Jade Horse themes | one of them is the current theme |
+
+Each item is ticked by detection at most once. If you untick it, it stays
+unticked. Items ticked this way say so under their title.
+
+The try commands and signals are written by hand per release in
+`Features.js`; `tests/features.test.mjs` checks every one against the real
+release notes in `tests/fixtures/`.
 
 ## State
 

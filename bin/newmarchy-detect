@@ -1,0 +1,51 @@
+#!/bin/bash
+# Prints the names of new-feature signals found on this machine, one per line.
+# Read-only: it looks at local state and never touches the network. Each check
+# is independent and silent on failure, so a missing tool drops one signal
+# rather than the whole run. newmarchy maps these names to checklist items.
+
+state=${XDG_STATE_HOME:-$HOME/.local/state}
+config=${XDG_CONFIG_HOME:-$HOME/.config}
+share=${XDG_DATA_HOME:-$HOME/.local/share}
+
+# A language other than English has been picked.
+lang=$(omarchy-language 2>/dev/null | head -n1)
+[[ -n $lang && $lang != en ]] && echo language
+
+# A workspace (or the default) has been switched to the floating layout.
+if grep -qs 'mode = "floating"' "$state"/omarchy/workspace-layouts/*.lua; then
+  echo floating
+fi
+
+# The Quake console's special workspace exists, so it has been opened.
+if hyprctl workspaces -j 2>/dev/null | grep -q '"special:qconsole"'; then
+  echo quake
+fi
+
+# Elsewhen has cities of your own in the bar layout.
+if command -v jq >/dev/null && [[ -f $config/omarchy/shell.json ]]; then
+  if jq -e '[.bar.layout[]?[]? | select(type == "object" and .id == "omarchy.elsewhen" and ((.cities // []) | length) > 0)] | length > 0' \
+    "$config/omarchy/shell.json" >/dev/null 2>&1; then
+    echo elsewhen
+  fi
+fi
+
+# The background is a video.
+background=$(readlink -f "$state/omarchy/current/background" 2>/dev/null)
+[[ ${background,,} =~ \.(mp4|webm|mkv|mov|m4v)$ ]] && echo video-background
+
+# One of the new default apps has been run (each keeps state once opened).
+for app in hype signed disktree monologue; do
+  if [[ -e $config/$app || -e $state/$app || -e $share/$app ]]; then
+    echo new-apps
+    break
+  fi
+done
+
+# One of the two new themes is in use.
+theme=$(cat "$state/omarchy/current/theme.name" 2>/dev/null)
+case ${theme,,} in
+  starship | jade-horse | "jade horse") echo new-themes ;;
+esac
+
+exit 0
