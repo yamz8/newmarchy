@@ -338,7 +338,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keys
-    contentWidth: popout.fittedContentWidth(Style.space(600))
+    contentWidth: popout.fittedContentWidth(Style.space(420))
     contentHeight: popout.fittedContentHeight(content.implicitHeight, Style.space(820))
 
     PanelKeyCatcher {
@@ -375,48 +375,56 @@ Panel {
         id: content
 
         width: parent.width
-        spacing: Style.space(10)
+        spacing: Style.space(6)
 
-        PanelHero {
+        // One compact line: the release and its progress, with two icon
+        // actions on the right.
+        Item {
           width: parent.width
-          title: "newmarchy"
-          meta: !root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total))
-          foreground: root.foreground
-          fontFamily: root.fontFamily
+          implicitHeight: Math.max(headerText.implicitHeight, markAll.implicitHeight)
 
-          iconComponent: Component {
-            Text {
-              text: root.newIcon
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.display
-            }
+          Text {
+            id: headerText
+
+            anchors.left: parent.left
+            anchors.right: actions.left
+            anchors.rightMargin: Style.space(8)
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.newIcon + "  " + (!root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total)))
+            textFormat: Text.PlainText
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            elide: Text.ElideRight
           }
 
-          trailingControl: Component {
-            Row {
-              spacing: Style.spacing.sm
+          Row {
+            id: actions
 
-              Button {
-                visible: root.items.length > 0
-                text: root.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
-                bordered: true
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                fontSize: Style.font.caption
-                onClicked: root.toggleAll()
-              }
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(2)
 
-              Button {
-                text: strings.t("hero.notes")
-                tooltipText: root.notes && root.notes.sourceTag !== root.notes.tag ? strings.t("hero.notesFrom").arg(root.notes.sourceTag) : ""
-                bordered: true
-                foreground: root.foreground
-                fontFamily: root.fontFamily
-                fontSize: Style.font.caption
-                onClicked: root.openNotes()
-              }
+            Button {
+              id: markAll
+
+              visible: root.items.length > 0
+              iconText: root.unseen > 0 ? "󰸞" : "󰛌"
+              tooltipText: root.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              iconSize: Style.font.body
+              onClicked: root.toggleAll()
+            }
+
+            Button {
+              iconText: "󰏌"
+              tooltipText: root.notes && root.notes.sourceTag !== root.notes.tag ? strings.t("hero.notesFrom").arg(root.notes.sourceTag) : strings.t("hero.notes")
+              foreground: root.foreground
+              fontFamily: root.fontFamily
+              iconSize: Style.font.body
+              onClicked: root.openNotes()
             }
           }
         }
@@ -430,7 +438,7 @@ Panel {
           id: list
 
           width: parent.width
-          height: Math.min(contentHeight, Style.space(640))
+          height: Math.min(contentHeight, Style.space(420))
           visible: root.items.length > 0
           clip: true
           model: root.items
@@ -446,7 +454,7 @@ Panel {
             readonly property color ink: hot ? Color.menu.selectedText : root.foreground
 
             width: ListView.view.width
-            height: Math.max(body.implicitHeight, tryButton.implicitHeight) + Style.space(14)
+            height: Math.max(body.implicitHeight, tryButton.implicitHeight) + Style.space(8)
             radius: Style.cornerRadius / 2
             color: hot ? Color.menu.selectedBackground : "transparent"
 
@@ -464,13 +472,13 @@ Panel {
               anchors.left: parent.left
               anchors.leftMargin: Style.spacing.rowPaddingX
               anchors.top: body.top
-              width: Style.space(26)
+              width: Style.space(22)
               text: row.modelData.used ? root.usedIcon : row.modelData.seen ? root.checkedIcon : root.uncheckedIcon
               textFormat: Text.PlainText
               color: row.hot ? row.ink : row.modelData.seen ? root.accent : row.modelData.breaking ? root.urgent : row.ink
               opacity: row.modelData.seen ? 0.9 : 0.65
               font.family: root.fontFamily
-              font.pixelSize: Style.font.subtitle
+              font.pixelSize: Style.font.body
 
               MouseArea {
                 anchors.fill: parent

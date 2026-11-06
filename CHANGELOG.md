@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1 — 2026-11-07
+
+- Smaller panel: 420 wide instead of 600, a shorter list, tighter rows, and
+  a one-line header with icon buttons for Mark all seen and Release notes.
+
 ## 1.2.0 — 2026-11-07
 
 - Slimmer panel: one list of the release's breaking changes and highlights.
