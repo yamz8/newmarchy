@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — 2026-11-07
+
+- Slimmer panel: one list of the release's breaking changes and highlights.
+  The folded Features / Improvements / Fixes sections, the release browser,
+  the progress row, and the footer are gone; the count moved into the header.
+- Try buttons appear only on the row under the mouse or cursor.
+- Items ticked by detection show a round check instead of a caption.
+- `a` marks everything seen, or clears it.
+
 ## 1.1.0 — 2026-11-05
 
 - Try it buttons on 4.5.0 items that have something to open; pressing one

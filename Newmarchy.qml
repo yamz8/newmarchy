@@ -21,9 +21,8 @@ Panel {
   // Font, so it stays monochrome and theme-tinted. No other widget uses it.
   readonly property string newIcon: "󰎔"
   readonly property string checkedIcon: "󰄲"
+  readonly property string usedIcon: "󰗠"
   readonly property string uncheckedIcon: "󰄱"
-  readonly property string openIcon: "󰅀"
-  readonly property string closedIcon: LayoutMirroring.enabled ? "󰅁" : "󰅂"
 
   // Thirty releases of notes are about 300 kB. 4 MiB is headroom that still
   // stops a hostile or hijacked endpoint from growing the shell without bound.
@@ -37,8 +36,6 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color accent: Color.accent
   readonly property color urgent: bar && bar.urgent.a > 0 ? bar.urgent : Color.accent
-  readonly property color selectedBackground: Color.menu.selectedBackground
-  readonly property color selectedText: Color.menu.selectedText
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   property string installedVersion: ""
@@ -47,94 +44,43 @@ Panel {
   property bool fetching: false
   property string errorText: ""
 
-  // The release shown in the panel, and the one the badge is about.
-  property string currentTag: ""
-  readonly property string installedTag: N.defaultTag(root.releases, root.installedVersion)
+  // Always the release you are running.
+  readonly property string tag: N.defaultTag(root.releases, root.installedVersion)
   property var notes: null
-  property var installedNotes: null
-
   property var seen: ({})
-  property var collapsed: ({})
   property var expanded: ({})
-  property var rows: []
+  property var items: []
   property int cursor: 0
   property bool returnPending: false
-  // Signals from the last run of bin/newmarchy-detect.
   property var detectedSignals: []
 
-  readonly property int unseen: N.unseenCount(root.installedNotes, root.seen)
-  // The header counts what the badge counts: breaking changes and highlights
-  // when the release has them, everything otherwise. "Mark all seen" still
-  // covers the whole release.
-  readonly property var progress: N.keyProgress(root.notes, root.seen)
-  readonly property int doneCount: root.progress.done
-  readonly property int totalCount: root.progress.total
-  readonly property bool allSeen: root.notes !== null && N.countItems(root.notes.sections) > 0 && root.countDone(root.notes) >= N.countItems(root.notes.sections)
+  readonly property var counts: N.progress(root.notes, root.seen)
+  readonly property int unseen: root.counts.total - root.counts.done
 
   Commons.Translations {
     id: strings
     directory: Qt.resolvedUrl("i18n")
   }
 
-  function countDone(notes) {
-    var done = 0;
-    for (var i = 0; i < notes.sections.length; i++)
-      done += N.sectionProgress(notes.sections[i], root.seen, notes.tag);
-    return done;
+  onTagChanged: {
+    root.notes = root.tag !== "" ? N.notesFor(root.releases, root.tag) : null;
+    root.expanded = ({});
+    root.refreshItems();
+    root.applyDetection();
   }
+  onSeenChanged: refreshItems()
 
-  function rebuild() {
-    root.installedNotes = root.installedTag !== "" ? N.notesFor(root.releases, root.installedTag) : null;
-    if (root.currentTag === "" || !N.findRelease(root.releases, root.currentTag))
-      root.currentTag = root.installedTag;
-    root.notes = root.currentTag === root.installedTag ? root.installedNotes : N.notesFor(root.releases, root.currentTag);
-    root.refreshRows();
-  }
-
-  function refreshRows() {
-    var list = N.rows(root.notes, root.seen, root.collapsed, root.expanded);
+  function refreshItems() {
+    var list = N.checklist(root.notes);
     for (var i = 0; i < list.length; i++) {
-      if (list[i].kind !== "item")
-        continue;
       var feature = F.featureFor(root.notes.tag, list[i].title);
       list[i].tryLabel = feature && feature.try ? feature.tryLabel : "";
-      list[i].detected = list[i].seen && N.wasAutoTicked(root.seen, root.notes.tag, list[i].id);
+      list[i].seen = N.isSeen(root.seen, root.notes.tag, list[i].id);
+      list[i].used = list[i].seen && N.wasAutoTicked(root.seen, root.notes.tag, list[i].id);
+      list[i].expanded = !!root.expanded[list[i].id];
     }
-    root.rows = list;
-    if (root.cursor >= root.rows.length)
-      root.cursor = Math.max(0, root.rows.length - 1);
-  }
-
-  onSeenChanged: refreshRows()
-  onInstalledTagChanged: rebuild()
-
-  function showTag(tag) {
-    if (tag === "" || tag === root.currentTag)
-      return;
-    root.currentTag = tag;
-    root.collapsed = ({});
-    root.expanded = ({});
-    root.cursor = 0;
-    root.rebuild();
-    if (list)
-      list.positionViewAtBeginning();
-  }
-
-  // Left is older, right is newer, along the list of final releases.
-  function stepRelease(direction) {
-    var tags = N.finalTags(root.releases);
-    var at = tags.indexOf(root.currentTag);
-    if (at < 0)
-      return;
-    var next = at - direction;
-    if (next >= 0 && next < tags.length)
-      root.showTag(tags[next]);
-  }
-
-  function canStep(direction) {
-    var tags = N.finalTags(root.releases);
-    var next = tags.indexOf(root.currentTag) - direction;
-    return tags.indexOf(root.currentTag) >= 0 && next >= 0 && next < tags.length;
+    root.items = list;
+    root.cursor = Math.max(0, Math.min(root.cursor, list.length - 1));
   }
 
   function saveSeen(next) {
@@ -143,93 +89,69 @@ Panel {
   }
 
   function setChecked(ids, value) {
-    if (!root.notes || ids.length === 0)
-      return;
-    root.saveSeen(N.setSeen(root.seen, root.notes.tag, ids, value));
+    if (root.notes && ids.length > 0)
+      root.saveSeen(N.setSeen(root.seen, root.notes.tag, ids, value));
   }
 
-  function allIds() {
-    var ids = [];
-    if (!root.notes)
-      return ids;
-    for (var i = 0; i < root.notes.sections.length; i++)
-      for (var j = 0; j < root.notes.sections[i].items.length; j++)
-        ids.push(root.notes.sections[i].items[j].id);
-    return ids;
+  function toggleSeen(item) {
+    if (item)
+      root.setChecked([item.id], !item.seen);
   }
 
-  function toggleRow(row) {
-    if (!row)
-      return;
-    if (row.kind === "section") {
-      root.toggleSection(row);
-      return;
-    }
-    root.setChecked([row.id], !row.seen);
+  function toggleAll() {
+    root.setChecked(root.items.map(function (item) {
+      return item.id;
+    }), root.unseen > 0);
   }
 
-  function toggleSection(row) {
-    var next = {};
-    for (var key in root.collapsed)
-      next[key] = root.collapsed[key];
-    next[row.title] = !row.collapsed;
-    root.collapsed = next;
-    root.refreshRows();
-  }
-
-  function toggleExpanded(row) {
-    if (!row)
+  function toggleExpanded(item) {
+    if (!item)
       return;
-    if (row.kind === "section") {
-      root.toggleSection(row);
-      return;
-    }
     var next = {};
     for (var key in root.expanded)
       next[key] = root.expanded[key];
-    next[row.id] = !row.expanded;
+    next[item.id] = !item.expanded;
     root.expanded = next;
-    root.refreshRows();
+    root.refreshItems();
   }
 
   function moveCursor(delta) {
-    if (root.rows.length === 0)
+    if (root.items.length === 0)
       return;
-    root.cursor = Math.max(0, Math.min(root.rows.length - 1, root.cursor + delta));
+    root.cursor = Math.max(0, Math.min(root.items.length - 1, root.cursor + delta));
     list.positionViewAtIndex(root.cursor, ListView.Contain);
-  }
-
-  // Ticks whatever the detector has seen you use, in the release you are
-  // running. Each item is ticked at most once (see N.applyDetected).
-  function applyDetection() {
-    if (!root.installedNotes || root.detectedSignals.length === 0)
-      return;
-    var result = N.applyDetected(root.seen, root.installedNotes.tag, F.detectedIds(root.installedNotes, root.detectedSignals));
-    if (result.ticked.length > 0)
-      root.saveSeen(result.seen);
-  }
-
-  function detect() {
-    if (!detectProcess.running)
-      detectProcess.running = true;
   }
 
   // Opens the feature and ticks the item. The panel closes first so a menu
   // or panel the command opens is not hidden behind it.
-  function tryRow(row) {
-    if (!row || row.kind !== "item" || !root.notes)
-      return;
-    var feature = F.featureFor(root.notes.tag, row.title);
+  function tryItem(item) {
+    var feature = item && root.notes ? F.featureFor(root.notes.tag, item.title) : null;
     if (!feature || !feature.try)
       return;
-    root.setChecked([row.id], true);
+    root.setChecked([item.id], true);
     root.close();
     Quickshell.execDetached(feature.try);
   }
 
+  // Ticks what bin/newmarchy-detect has seen you use, at most once per item
+  // (see N.applyDetected), so an untick sticks.
+  function applyDetection() {
+    if (!root.notes || root.detectedSignals.length === 0)
+      return;
+    var result = N.applyDetected(root.seen, root.notes.tag, F.detectedIds(root.notes, root.detectedSignals));
+    if (result.ticked.length > 0)
+      root.saveSeen(result.seen);
+  }
+
+  function refreshLocal() {
+    if (!versionProcess.running)
+      versionProcess.running = true;
+    if (!detectProcess.running)
+      detectProcess.running = true;
+  }
+
   function openNotes() {
-    var url = root.notes ? root.notes.url : N.RELEASES_PAGE;
-    Quickshell.execDetached(["omarchy-launch-browser", url]);
+    Quickshell.execDetached(["omarchy-launch-browser", root.notes ? root.notes.url : N.RELEASES_PAGE]);
     root.close();
   }
 
@@ -238,9 +160,7 @@ Panel {
   // builds that only honour a declared one. pipefail keeps curl's status.
   // The URL is a positional argument after --, never spliced into the script.
   function fetchReleases(force) {
-    if (root.fetching)
-      return;
-    if (!force && root.fetchedAt > 0 && Date.now() - root.fetchedAt < root.refetchAfterMs)
+    if (root.fetching || (!force && root.fetchedAt > 0 && Date.now() - root.fetchedAt < root.refetchAfterMs))
       return;
     root.fetching = true;
     root.errorText = "";
@@ -254,17 +174,16 @@ Panel {
       root.errorText = strings.t("error.oversized");
       return;
     }
-    var parsed;
     try {
-      parsed = N.parseReleases(raw);
+      root.releases = N.parseReleases(raw);
     } catch (error) {
-      root.errorText = String(error && error.message || "").indexOf("JSON") >= 0 || raw === "" ? strings.t("error.unreadable") : strings.t("error.api").arg(String(error.message));
+      root.errorText = raw === "" || String(error.message).indexOf("JSON") >= 0 ? strings.t("error.unreadable") : strings.t("error.api").arg(String(error.message));
       return;
     }
-    root.releases = parsed;
     root.fetchedAt = Date.now();
-    root.errorText = "";
-    root.rebuild();
+    // A re-fetch can bring new notes for the same tag.
+    root.notes = root.tag !== "" ? N.notesFor(root.releases, root.tag) : null;
+    root.refreshItems();
     root.applyDetection();
   }
 
@@ -280,12 +199,8 @@ Panel {
   onOpenedChanged: {
     if (!root.opened)
       return;
-    versionProcess.running = true;
-    root.detect();
+    root.refreshLocal();
     root.fetchReleases(false);
-    // Opening from the bar starts on the release you are running.
-    if (root.installedTag !== "" && root.currentTag !== root.installedTag)
-      root.showTag(root.installedTag);
     Qt.callLater(function () {
       keys.forceActiveFocus();
     });
@@ -293,8 +208,7 @@ Panel {
 
   Component.onCompleted: {
     Quickshell.execDetached(["mkdir", "-p", root.stateDir]);
-    versionProcess.running = true;
-    root.detect();
+    root.refreshLocal();
     root.fetchReleases(true);
   }
 
@@ -316,7 +230,7 @@ Panel {
     function toggle(): void {
       root.toggle();
     }
-    // omarchy-shell yamz8.newmarchy unseen  -> "4"
+    // omarchy-shell yamz8.newmarchy unseen  -> "17"
     function unseen(): string {
       return String(root.unseen);
     }
@@ -327,16 +241,27 @@ Panel {
     }
   }
 
-  // The installed version is local (pacman), so it is cheap to re-read. An
-  // update while the shell keeps running is picked up within the hour, and
-  // the badge moves to the new release's list.
+  // The installed version and the detector are local and cheap. Re-reading
+  // them hourly moves the badge to a new release after an update without a
+  // shell restart.
   Timer {
     interval: 60 * 60 * 1000
     running: true
     repeat: true
-    onTriggered: {
-      versionProcess.running = true;
-      root.detect();
+    onTriggered: root.refreshLocal()
+  }
+
+  Process {
+    id: versionProcess
+
+    command: ["omarchy-version"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var version = String(text || "").trim();
+        if (version !== "")
+          root.installedVersion = version;
+      }
     }
   }
 
@@ -351,20 +276,6 @@ Panel {
       onStreamFinished: {
         root.detectedSignals = F.parseSignals(String(text || "").slice(0, 4096));
         root.applyDetection();
-      }
-    }
-  }
-
-  Process {
-    id: versionProcess
-
-    command: ["omarchy-version"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        var version = String(text || "").trim();
-        if (version !== "" && version !== root.installedVersion)
-          root.installedVersion = version;
       }
     }
   }
@@ -427,7 +338,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keys
-    contentWidth: popout.fittedContentWidth(Style.space(640))
+    contentWidth: popout.fittedContentWidth(Style.space(600))
     contentHeight: popout.fittedContentHeight(content.implicitHeight, Style.space(820))
 
     PanelKeyCatcher {
@@ -442,37 +353,34 @@ Panel {
       onMoveRequested: function (dx, dy) {
         if (dy !== 0)
           root.moveCursor(dy);
-        else if (dx !== 0)
-          root.stepRelease(dx);
       }
       onReturnRequested: {
         root.returnPending = true;
-        root.toggleExpanded(root.rows[root.cursor]);
+        root.toggleExpanded(root.items[root.cursor]);
       }
       onActivateRequested: {
-        if (root.returnPending) {
+        if (root.returnPending)
           root.returnPending = false;
-          return;
-        }
-        root.toggleRow(root.rows[root.cursor]);
+        else
+          root.toggleSeen(root.items[root.cursor]);
       }
       onTextKey: function (text) {
-        if (text === "r")
-          root.fetchReleases(true);
-        else if (text === "t")
-          root.tryRow(root.rows[root.cursor]);
+        if (text === "t")
+          root.tryItem(root.items[root.cursor]);
+        else if (text === "a")
+          root.toggleAll();
       }
 
       Column {
         id: content
 
         width: parent.width
-        spacing: Style.space(12)
+        spacing: Style.space(10)
 
         PanelHero {
           width: parent.width
           title: "newmarchy"
-          meta: !root.notes ? strings.t("hero.metaLoading") : root.notes.sourceTag !== root.notes.tag ? strings.t("hero.metaBorrowed").arg(root.notes.tag).arg(root.notes.sourceTag) : strings.t("hero.meta").arg(root.notes.tag)
+          meta: !root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total))
           foreground: root.foreground
           fontFamily: root.fontFamily
 
@@ -487,13 +395,28 @@ Panel {
           }
 
           trailingControl: Component {
-            Button {
-              text: strings.t("hero.notes")
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.openNotes()
+            Row {
+              spacing: Style.spacing.sm
+
+              Button {
+                visible: root.items.length > 0
+                text: root.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                onClicked: root.toggleAll()
+              }
+
+              Button {
+                text: strings.t("hero.notes")
+                tooltipText: root.notes && root.notes.sourceTag !== root.notes.tag ? strings.t("hero.notesFrom").arg(root.notes.sourceTag) : ""
+                bordered: true
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                fontSize: Style.font.caption
+                onClicked: root.openNotes()
+              }
             }
           }
         }
@@ -501,402 +424,144 @@ Panel {
         PanelSeparator {
           width: parent.width
           foreground: root.foreground
-        }
-
-        // Release switcher and progress.
-        Item {
-          width: parent.width
-          visible: root.notes !== null
-          implicitHeight: visible ? Math.max(navRow.implicitHeight, actions.implicitHeight) : 0
-
-          Row {
-            id: navRow
-
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.sm
-
-            Button {
-              text: LayoutMirroring.enabled ? "›" : "‹"
-              tooltipText: strings.t("nav.older")
-              bordered: true
-              enabled: root.canStep(-1)
-              opacity: enabled ? 1 : 0.35
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.stepRelease(-1)
-            }
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.notes ? root.notes.tag + (root.notes.published !== "" ? "  ·  " + new Date(root.notes.published + "T00:00:00").toLocaleDateString(Qt.locale(Commons.I18n.formatLocale), Locale.ShortFormat) : "") : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              font.bold: true
-            }
-
-            Button {
-              text: LayoutMirroring.enabled ? "‹" : "›"
-              tooltipText: strings.t("nav.newer")
-              bordered: true
-              enabled: root.canStep(1)
-              opacity: enabled ? 1 : 0.35
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.stepRelease(1)
-            }
-
-            Button {
-              visible: root.currentTag !== root.installedTag && root.installedTag !== ""
-              text: strings.t("nav.backToInstalled")
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.showTag(root.installedTag)
-            }
-          }
-
-          Row {
-            id: actions
-
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.spacing.sm
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              text: root.doneCount >= root.totalCount && root.totalCount > 0 ? strings.t("progress.allSeen").arg(Commons.I18n.formatNumber(root.totalCount)) : strings.t("progress.seen").arg(Commons.I18n.formatNumber(root.doneCount)).arg(Commons.I18n.formatNumber(root.totalCount))
-              textFormat: Text.PlainText
-              color: root.foreground
-              opacity: 0.6
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-
-            Button {
-              text: root.allSeen ? strings.t("action.clearAll") : strings.t("action.markAll")
-              bordered: true
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.setChecked(root.allIds(), !root.allSeen)
-            }
-          }
         }
 
         ListView {
           id: list
 
           width: parent.width
-          height: Math.min(contentHeight, Style.space(600))
-          visible: root.rows.length > 0
+          height: Math.min(contentHeight, Style.space(640))
+          visible: root.items.length > 0
           clip: true
-          model: root.rows
+          model: root.items
           currentIndex: root.cursor
           boundsBehavior: Flickable.StopAtBounds
-          spacing: Style.space(2)
 
           delegate: Rectangle {
-            id: rowItem
+            id: row
 
             required property var modelData
             required property int index
-            readonly property bool isSection: modelData.kind === "section"
             readonly property bool hot: index === root.cursor
-            readonly property color ink: hot ? root.selectedText : root.foreground
+            readonly property color ink: hot ? Color.menu.selectedText : root.foreground
 
             width: ListView.view.width
-            height: (isSection ? sectionBody.implicitHeight : itemBody.implicitHeight) + Style.space(isSection ? 14 : 16)
+            height: Math.max(body.implicitHeight, tryButton.implicitHeight) + Style.space(14)
             radius: Style.cornerRadius / 2
-            color: hot ? root.selectedBackground : "transparent"
+            color: hot ? Color.menu.selectedBackground : "transparent"
 
-            // Section header: chevron, name, progress, and a section-wide check.
-            Item {
-              id: sectionBody
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onEntered: root.cursor = row.index
+              onClicked: root.toggleExpanded(row.modelData)
+            }
 
-              visible: rowItem.isSection
-              anchors {
-                left: parent.left
-                right: parent.right
-                verticalCenter: parent.verticalCenter
-                leftMargin: Style.spacing.rowPaddingX
-                rightMargin: Style.spacing.rowPaddingX
+            Text {
+              id: check
+
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.rowPaddingX
+              anchors.top: body.top
+              width: Style.space(26)
+              text: row.modelData.used ? root.usedIcon : row.modelData.seen ? root.checkedIcon : root.uncheckedIcon
+              textFormat: Text.PlainText
+              color: row.hot ? row.ink : row.modelData.seen ? root.accent : row.modelData.breaking ? root.urgent : row.ink
+              opacity: row.modelData.seen ? 0.9 : 0.65
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.subtitle
+
+              MouseArea {
+                anchors.fill: parent
+                anchors.margins: -Style.space(6)
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleSeen(row.modelData)
               }
-              implicitHeight: Math.max(sectionTitle.implicitHeight, sectionCheck.implicitHeight)
+            }
+
+            Column {
+              id: body
+
+              anchors.left: check.right
+              anchors.right: tryButton.visible ? tryButton.left : parent.right
+              anchors.rightMargin: Style.spacing.rowPaddingX
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(4)
 
               Text {
-                id: chevron
-
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                width: Style.space(18)
-                text: rowItem.modelData.collapsed ? root.closedIcon : root.openIcon
+                width: parent.width
+                text: String(row.modelData.title || "")
                 textFormat: Text.PlainText
-                color: rowItem.ink
-                opacity: 0.7
+                color: row.ink
+                opacity: row.modelData.seen ? 0.55 : 1
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
-              }
-
-              Text {
-                id: sectionTitle
-
-                anchors.left: chevron.right
-                anchors.right: sectionCount.left
-                anchors.rightMargin: Style.space(12)
-                anchors.verticalCenter: parent.verticalCenter
-                text: String(rowItem.modelData.title).toUpperCase()
-                textFormat: Text.PlainText
-                color: rowItem.modelData.breaking && !rowItem.hot ? root.urgent : rowItem.ink
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                font.bold: true
-                font.letterSpacing: 1
+                font.bold: !row.modelData.seen
+                wrapMode: Text.WordWrap
+                maximumLineCount: row.modelData.expanded ? 6 : 2
                 elide: Text.ElideRight
               }
 
               Text {
-                id: sectionCount
-
-                anchors.right: sectionCheck.left
-                anchors.rightMargin: Style.space(10)
-                anchors.verticalCenter: parent.verticalCenter
-                text: rowItem.isSection ? Commons.I18n.formatNumber(rowItem.modelData.done) + " / " + Commons.I18n.formatNumber(rowItem.modelData.total) : ""
+                width: parent.width
+                visible: !!row.modelData.expanded && text !== ""
+                text: String(row.modelData.detail || "")
                 textFormat: Text.PlainText
-                color: rowItem.ink
-                opacity: 0.55
+                color: row.ink
+                opacity: 0.72
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-              }
-
-              Text {
-                id: sectionCheck
-
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: rowItem.isSection && rowItem.modelData.done >= rowItem.modelData.total ? root.checkedIcon : root.uncheckedIcon
-                textFormat: Text.PlainText
-                color: rowItem.ink
-                opacity: rowItem.isSection && rowItem.modelData.done >= rowItem.modelData.total ? 0.9 : 0.5
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.subtitle
-
-                MouseArea {
-                  anchors.fill: parent
-                  anchors.margins: -Style.space(6)
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    root.cursor = rowItem.index;
-                    root.setChecked(rowItem.modelData.ids, rowItem.modelData.done < rowItem.modelData.total);
-                  }
-                }
+                wrapMode: Text.WordWrap
+                lineHeight: 1.15
               }
             }
 
-            // Item: checkbox, title, and the detail when opened.
-            Item {
-              id: itemBody
-
-              visible: !rowItem.isSection
-              anchors {
-                left: parent.left
-                right: parent.right
-                verticalCenter: parent.verticalCenter
-                leftMargin: Style.spacing.rowPaddingX
-                rightMargin: Style.spacing.rowPaddingX
-              }
-              implicitHeight: visible ? Math.max(itemText.implicitHeight, tryButton.visible ? tryButton.implicitHeight : 0) : 0
-
-              Text {
-                id: itemCheck
-
-                anchors.left: parent.left
-                anchors.top: parent.top
-                width: Style.space(26)
-                text: rowItem.modelData.seen ? root.checkedIcon : root.uncheckedIcon
-                textFormat: Text.PlainText
-                color: rowItem.modelData.seen ? (rowItem.hot ? rowItem.ink : root.accent) : rowItem.ink
-                opacity: rowItem.modelData.seen ? 0.9 : 0.6
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.subtitle
-
-                MouseArea {
-                  anchors.fill: parent
-                  anchors.margins: -Style.space(6)
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    root.cursor = rowItem.index;
-                    root.setChecked([rowItem.modelData.id], !rowItem.modelData.seen);
-                  }
-                }
-              }
-
-              Button {
-                id: tryButton
-
-                anchors.right: parent.right
-                anchors.top: parent.top
-                visible: !rowItem.isSection && String(rowItem.modelData.tryLabel || "") !== ""
-                text: String(rowItem.modelData.tryLabel || "")
-                tooltipText: strings.t("action.tryTooltip")
-                bordered: true
-                foreground: rowItem.ink
-                fontFamily: root.fontFamily
-                fontSize: Style.font.caption
-                onClicked: root.tryRow(rowItem.modelData)
-              }
-
-              Column {
-                id: itemText
-
-                anchors.left: itemCheck.right
-                anchors.right: tryButton.visible ? tryButton.left : parent.right
-                anchors.rightMargin: tryButton.visible ? Style.space(10) : 0
-                anchors.top: parent.top
-                spacing: Style.space(4)
-
-                Text {
-                  width: parent.width
-                  text: String(rowItem.modelData.title || "")
-                  textFormat: Text.PlainText
-                  color: rowItem.ink
-                  opacity: rowItem.modelData.seen ? 0.55 : 1
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  font.bold: !rowItem.modelData.seen
-                  wrapMode: Text.WordWrap
-                  maximumLineCount: rowItem.modelData.expanded ? 6 : 2
-                  elide: Text.ElideRight
-                }
-
-                Text {
-                  width: parent.width
-                  visible: !!rowItem.modelData.detected
-                  text: strings.t("item.detected")
-                  textFormat: Text.PlainText
-                  color: rowItem.hot ? rowItem.ink : root.accent
-                  opacity: 0.8
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                }
-
-                Text {
-                  width: parent.width
-                  visible: !!rowItem.modelData.expanded && String(rowItem.modelData.detail || "") !== ""
-                  text: String(rowItem.modelData.detail || "")
-                  textFormat: Text.PlainText
-                  color: rowItem.ink
-                  opacity: 0.72
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                  lineHeight: 1.15
-                }
-              }
-            }
-
-            MouseArea {
-              anchors.fill: parent
-              z: -1
-              hoverEnabled: true
-              cursorShape: rowItem.isSection || String(rowItem.modelData.detail || "") !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
-              onEntered: root.cursor = rowItem.index
-              onClicked: {
-                root.cursor = rowItem.index;
-                root.toggleExpanded(rowItem.modelData);
-              }
-            }
-          }
-        }
-
-        BorderSurface {
-          width: parent.width
-          visible: root.rows.length === 0
-          implicitHeight: visible ? Style.space(96) : 0
-          color: Style.controlFill(false, false, root.foreground, root.accent)
-          borderSpec: Border.controlSpec("normal", root.foreground, root.accent)
-          radius: Style.cornerRadius
-
-          Column {
-            width: parent.width - Style.space(40)
-            anchors.centerIn: parent
-            spacing: Style.space(5)
-
-            Text {
-              width: parent.width
-              text: root.errorText !== "" ? strings.t("empty.errorTitle") : root.fetching || !root.notes ? strings.t("empty.loading") : strings.t("empty.noNotes")
-              textFormat: Text.PlainText
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              font.bold: true
-              horizontalAlignment: Text.AlignHCenter
-            }
-
-            Text {
-              width: parent.width
-              visible: text !== ""
-              text: root.errorText !== "" ? root.errorText : root.notes && !root.fetching ? strings.t("empty.noNotesDetail") : ""
-              textFormat: Text.PlainText
-              color: root.foreground
-              opacity: 0.5
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              horizontalAlignment: Text.AlignHCenter
-              wrapMode: Text.WordWrap
-            }
-
+            // Shown only on the row under the cursor or the mouse.
             Button {
-              anchors.horizontalCenter: parent.horizontalCenter
-              visible: root.errorText !== ""
-              text: strings.t("action.refresh")
+              id: tryButton
+
+              anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.rowPaddingX
+              anchors.verticalCenter: parent.verticalCenter
+              visible: row.hot && String(row.modelData.tryLabel || "") !== ""
+              text: String(row.modelData.tryLabel || "")
+              tooltipText: strings.t("action.tryTooltip")
               bordered: true
-              foreground: root.foreground
+              foreground: row.ink
               fontFamily: root.fontFamily
               fontSize: Style.font.caption
-              onClicked: root.fetchReleases(true)
+              onClicked: root.tryItem(row.modelData)
             }
           }
         }
 
-        PanelSeparator {
+        Column {
           width: parent.width
-          foreground: root.foreground
-        }
-
-        Item {
-          width: parent.width
-          implicitHeight: Math.max(sourceNote.implicitHeight, keyHints.implicitHeight)
+          visible: root.items.length === 0
+          spacing: Style.space(6)
 
           Text {
-            id: sourceNote
-
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: strings.t("footer.source")
+            width: parent.width
+            text: root.errorText !== "" ? root.errorText : root.fetching || !root.notes ? strings.t("empty.loading") : strings.t("empty.noNotes")
             textFormat: Text.PlainText
             color: root.foreground
-            opacity: 0.42
+            opacity: 0.6
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.body
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
           }
 
-          Text {
-            id: keyHints
-
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            text: strings.t("footer.keys")
-            textFormat: Text.PlainText
-            color: root.foreground
-            opacity: 0.32
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+          Button {
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: root.errorText !== ""
+            text: strings.t("action.refresh")
+            bordered: true
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+            fontSize: Style.font.caption
+            onClicked: root.fetchReleases(true)
           }
         }
       }

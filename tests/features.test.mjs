@@ -69,7 +69,7 @@ test("the auto-tick record survives the state file round trip", () => {
 })
 
 test("the real 4.5.0 notes give 4 breaking changes and 16 highlights", () => {
-  assert.deepEqual(plain(N.keyProgress(notes, {})), { done: 0, total: 20 })
+  assert.deepEqual(plain(N.progress(notes, {})), { done: 0, total: 20 })
   assert.deepEqual(plain(notes.sections.slice(0, 2).map((s) => [s.title, s.items.length])), [
     ["Breaking changes", 4],
     ["Highlights", 16]

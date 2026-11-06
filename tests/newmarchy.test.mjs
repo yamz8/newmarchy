@@ -203,7 +203,6 @@ test("defaultTag picks the installed version, else the newest final", () => {
   assert.equal(N.defaultTag(releases, "4.5.0-3"), "v4.5.0")
   assert.equal(N.defaultTag(releases, "dev (abc)"), "v4.5.0")
   assert.equal(N.defaultTag(releases, "9.9.9-1"), "v4.5.0")
-  assert.deepEqual(plain(N.finalTags(releases)), ["v4.5.0", "v4.0.6"])
 })
 
 test("the badge counts key sections only when the release has them", () => {
@@ -244,24 +243,27 @@ test("parseSeen rejects junk", () => {
   assert.deepEqual(plain(N.parseSeen(JSON.stringify({ "v1.0.0": ["abc", "ZZZ", "abc"], "../x": ["abc"], v2: "no" }))), { "v1.0.0": ["abc"] })
 })
 
-test("rows open key sections and fold the rest by default", () => {
+
+test("the checklist is breaking changes and highlights, breaking first", () => {
   const notes = N.notesFor(N.parseReleases(feed), "v4.5.0")
-  const list = plain(N.rows(notes, {}, {}, {}))
-  const headers = list.filter((r) => r.kind === "section")
-  assert.deepEqual(headers.map((h) => [h.title, h.collapsed]), [
-    ["Breaking changes", false],
-    ["Highlights", false],
-    ["Features", true]
+  const items = plain(N.checklist(notes))
+  assert.deepEqual(items.map((i) => [i.title, i.breaking]), [
+    ["The boot menu stays out of the way now", true],
+    ["Some shortcuts moved", true],
+    ["Add Omarchy in 50 languages", false],
+    ["Add floating workspaces with a dock", false]
   ])
-  assert.equal(list.filter((r) => r.kind === "item").length, 4)
-  const opened = plain(N.rows(notes, {}, { Features: false }, {}))
-  assert.equal(opened.filter((r) => r.kind === "item").length, 8)
 })
 
-test("keyProgress counts what the badge counts", () => {
+test("a release without highlights lists everything it has", () => {
+  const notes = N.notesFor(N.parseReleases(feed), "v4.0.6")
+  assert.equal(N.checklist(notes).length, 2)
+})
+
+test("progress counts what the checklist shows", () => {
   const notes = N.notesFor(N.parseReleases(feed), "v4.5.0")
-  assert.deepEqual(plain(N.keyProgress(notes, {})), { done: 0, total: 4 })
+  assert.deepEqual(plain(N.progress(notes, {})), { done: 0, total: 4 })
   const seen = N.setSeen({}, "v4.5.0", [notes.sections[0].items[0].id], true)
-  assert.deepEqual(plain(N.keyProgress(notes, seen)), { done: 1, total: 4 })
-  assert.deepEqual(plain(N.keyProgress(null, {})), { done: 0, total: 0 })
+  assert.deepEqual(plain(N.progress(notes, seen)), { done: 1, total: 4 })
+  assert.deepEqual(plain(N.progress(null, {})), { done: 0, total: 0 })
 })

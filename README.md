@@ -3,22 +3,20 @@
 An Omarchy bar widget that turns each Omarchy release into a checklist, so
 after an update you can tell what's new and know you've actually seen it.
 
-- **Bar icon with a badge** counting the breaking changes and highlights of
-  the release you're running that you haven't checked off yet. When every one
-  is checked, the badge goes away.
-- **Click** to open the checklist. Breaking changes come first, then
-  highlights; the long Features / Improvements / Fixes lists are folded and
-  open with a click.
+- **Bar icon with a badge** counting what you haven't checked off yet in the
+  release you're running. It goes away when you've seen everything.
+- **Click** to open the checklist: the release's breaking changes (their
+  boxes are tinted) and highlights. The long Features / Improvements / Fixes
+  lists stay on the release page, one click away.
 - **Click an item** to read its full text, and **tick its box** once you've
-  seen it. A section's box ticks the whole section.
-- **Try it** buttons sit beside items that have something to open: the
-  language picker, workspace layouts, Elsewhen, the Quake console, the theme
-  menu, a test notification card. Pressing one opens the feature and ticks
-  the item.
-- **Ticks itself** when it can see you've used something new (see below).
-- **‹ ›** step to older and newer releases, so an update that skipped several
-  versions can be caught up on. **Right-click** the icon to open the release
-  on GitHub.
+  seen it.
+- **Try it**: the row under the mouse or cursor shows a button when there is
+  something to open (the language picker, workspace layouts, Elsewhen, the
+  Quake console, the theme menu, a test notification). Pressing it opens the
+  feature and ticks the item.
+- **Ticks itself** when it can see you've used something new; those items get
+  a round check instead of a square one (see below).
+- **Right-click** the icon to open the release on GitHub.
 
 ## Install
 
@@ -31,11 +29,10 @@ omarchy plugin add https://github.com/yamz8/newmarchy.git --enable
 | Key | Action |
 | --- | --- |
 | ↑ ↓ / j k | Move |
-| Space | Check or uncheck the item; fold a section |
-| Enter | Open the item's text; fold a section |
-| t | Try it, when the item has a Try button |
-| ← → | Older / newer release |
-| r | Refetch release notes |
+| Space | Check or uncheck |
+| Enter | Read the item's full text |
+| t | Try it |
+| a | Mark all seen, or clear them all |
 | Esc | Close |
 
 IPC, for a keybinding or a script:
@@ -57,7 +54,7 @@ description is bounded and rendered as plain text.
 Some final releases, such as v4.5.0, carry only a short summary and a link,
 with the full notes on the last release candidate. When a release candidate
 has more to check off than its final release, newmarchy uses the candidate's
-notes and says so in the header.
+notes; the Release notes button's tooltip says which.
 
 The installed version is read locally with `omarchy-version`, once an hour
 and whenever the panel opens, so the badge follows an update without a shell
@@ -79,7 +76,7 @@ shell starts, when the panel opens, and once an hour. For 4.5.0 it ticks:
 | Starship and Jade Horse themes | one of them is the current theme |
 
 Each item is ticked by detection at most once. If you untick it, it stays
-unticked. Items ticked this way say so under their title.
+unticked. Items ticked this way show a round check.
 
 The try commands and signals are written by hand per release in
 `Features.js`; `tests/features.test.mjs` checks every one against the real

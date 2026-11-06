@@ -270,13 +270,6 @@ function parseReleases(raw) {
   return releases
 }
 
-// The tags a user can step through: final releases only, newest first.
-function finalTags(releases) {
-  var tags = []
-  for (var i = 0; i < releases.length; i++) if (!releases[i].prerelease) tags.push(releases[i].tag)
-  return tags
-}
-
 function findRelease(releases, tag) {
   for (var i = 0; i < releases.length; i++) if (releases[i].tag === tag) return releases[i]
   return null
@@ -318,12 +311,13 @@ function notesFor(releases, tag) {
 // appear), the newest final release.
 function defaultTag(releases, installedVersion) {
   var base = baseVersion(installedVersion)
-  var finals = finalTags(releases)
-  if (base !== "") {
-    var exact = "v" + base
-    for (var i = 0; i < finals.length; i++) if (finals[i] === exact) return exact
+  var newest = ""
+  for (var i = 0; i < releases.length; i++) {
+    if (releases[i].prerelease) continue
+    if (base !== "" && releases[i].tag === "v" + base) return releases[i].tag
+    if (newest === "") newest = releases[i].tag
   }
-  return finals.length > 0 ? finals[0] : ""
+  return newest
 }
 
 // Seen state file: { "v4.5.0": ["1a2b3c", ...], ... }. Anything else in the
@@ -371,21 +365,6 @@ function setSeen(seen, tag, ids, value) {
   return next
 }
 
-// The items the badge is about, and how many of them are checked off.
-function keyProgress(notes, seen) {
-  var result = { done: 0, total: 0 }
-  if (!notes) return result
-  var hasKey = false
-  for (var k = 0; k < notes.sections.length; k++) if (notes.sections[k].key) hasKey = true
-  for (var i = 0; i < notes.sections.length; i++) {
-    var section = notes.sections[i]
-    if (hasKey && !section.key) continue
-    result.total += section.items.length
-    result.done += sectionProgress(section, seen, notes.tag)
-  }
-  return result
-}
-
 // Detection ticks an item once. The ids it has ticked are remembered under
 // "auto-<tag>", so an item you untick afterwards stays unticked instead of
 // being ticked again on the next check.
@@ -409,49 +388,35 @@ function applyDetected(seen, tag, ids) {
   return { seen: next, ticked: fresh }
 }
 
-// Items the bar badge counts as still to see.
-function unseenCount(notes, seen) {
-  var progress = keyProgress(notes, seen)
-  return progress.total - progress.done
-}
-
-function sectionProgress(section, seen, tag) {
-  var done = 0
-  for (var i = 0; i < section.items.length; i++) if (isSeen(seen, tag, section.items[i].id)) done++
-  return done
-}
-
-// Flattens the notes into the rows the list draws: a header per section and,
-// when the section is open, a row per item.
-function rows(notes, seen, collapsed, expanded) {
-  var out = []
-  if (!notes) return out
+// What the panel lists: breaking changes and highlights when the release
+// has them. A big release also lists hundreds of fixes under Features,
+// Improvements and Fixes; those stay on the release page. A release without
+// either, such as a patch release, lists everything it has.
+function checklist(notes) {
+  var items = []
+  if (!notes) return items
+  var hasKey = false
+  for (var k = 0; k < notes.sections.length; k++) if (notes.sections[k].key) hasKey = true
   for (var i = 0; i < notes.sections.length; i++) {
     var section = notes.sections[i]
-    var isCollapsed = collapsed.hasOwnProperty(section.title) ? collapsed[section.title] : !(section.key || section.breaking)
-    out.push({
-      kind: "section",
-      title: section.title,
-      breaking: section.breaking,
-      total: section.items.length,
-      done: sectionProgress(section, seen, notes.tag),
-      collapsed: isCollapsed,
-      ids: section.items.map(function (entry) { return entry.id })
-    })
-    if (isCollapsed) continue
+    if (hasKey && !section.key) continue
     for (var j = 0; j < section.items.length; j++) {
       var entry = section.items[j]
-      out.push({
-        kind: "item",
-        id: entry.id,
-        title: entry.title,
-        detail: entry.detail,
-        section: section.title,
-        breaking: section.breaking,
-        seen: isSeen(seen, notes.tag, entry.id),
-        expanded: !!expanded[entry.id]
-      })
+      items.push({ id: entry.id, title: entry.title, detail: entry.detail, breaking: section.breaking })
     }
   }
-  return out
+  return items
+}
+
+function progress(notes, seen) {
+  var items = checklist(notes)
+  var done = 0
+  for (var i = 0; i < items.length; i++) if (isSeen(seen, notes.tag, items[i].id)) done++
+  return { done: done, total: items.length }
+}
+
+// Items the bar badge counts as still to see.
+function unseenCount(notes, seen) {
+  var counts = progress(notes, seen)
+  return counts.total - counts.done
 }
