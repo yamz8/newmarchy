@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 — 2026-11-07
+
+- Panel rebuilt on the same pieces as Omarchy's built-in panels: a
+  "What's new" hero with icon actions, section headings for breaking
+  changes and highlights, cursor rows with a MultiSelect-style checkbox, a
+  dim caption line, and a ▶ action for Try it. 380 wide, like Dropbox.
+- The cursor appears on hover or the first arrow key, as in the built-ins.
+
 ## 1.2.1 — 2026-11-07
 
 - Smaller panel: 420 wide instead of 600, a shorter list, tighter rows, and

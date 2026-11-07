@@ -19,5 +19,7 @@
   "error.api": "GitHub refused the request: %1",
   "action.tryTooltip": "Open it and tick it off",
   "hero.allSeen": "Omarchy %1 · all seen",
-  "hero.notesFrom": "Notes from %1"
+  "hero.notesFrom": "Notes from %1",
+  "hero.title": "What's new",
+  "item.used": "Ticked because you've used it"
 }

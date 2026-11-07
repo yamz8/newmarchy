@@ -1,4 +1,6 @@
 import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -20,9 +22,10 @@ Panel {
   // A "new" box (U+F0394, Material Design Icons) from the configured Nerd
   // Font, so it stays monochrome and theme-tinted. No other widget uses it.
   readonly property string newIcon: "󰎔"
-  readonly property string checkedIcon: "󰄲"
-  readonly property string usedIcon: "󰗠"
-  readonly property string uncheckedIcon: "󰄱"
+  readonly property string notesIcon: "󰏌"
+  readonly property string markAllIcon: "󰸞"
+  readonly property string clearAllIcon: "󰛌"
+  readonly property string tryIcon: "󰐊"
 
   // Thirty releases of notes are about 300 kB. 4 MiB is headroom that still
   // stops a hostile or hijacked endpoint from growing the shell without bound.
@@ -35,7 +38,7 @@ Panel {
 
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color accent: Color.accent
-  readonly property color urgent: bar && bar.urgent.a > 0 ? bar.urgent : Color.accent
+  readonly property color dim: Qt.darker(foreground, 1.55)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   property string installedVersion: ""
@@ -51,6 +54,10 @@ Panel {
   property var expanded: ({})
   property var items: []
   property int cursor: 0
+  property bool cursorActive: false
+  // The checklist split by section, for the section headers; each item keeps
+  // its position in the flat list as `index`.
+  property var groups: []
   property bool returnPending: false
   property var detectedSignals: []
 
@@ -79,7 +86,18 @@ Panel {
       list[i].used = list[i].seen && N.wasAutoTicked(root.seen, root.notes.tag, list[i].id);
       list[i].expanded = !!root.expanded[list[i].id];
     }
+    var groups = [];
+    for (var j = 0; j < list.length; j++) {
+      list[j].index = j;
+      if (groups.length === 0 || groups[groups.length - 1].title !== list[j].section)
+        groups.push({
+          title: list[j].section,
+          items: []
+        });
+      groups[groups.length - 1].items.push(list[j]);
+    }
     root.items = list;
+    root.groups = groups;
     root.cursor = Math.max(0, Math.min(root.cursor, list.length - 1));
   }
 
@@ -115,11 +133,48 @@ Panel {
     root.refreshItems();
   }
 
+  // The first arrow key only shows the cursor, as in the built-in panels.
   function moveCursor(delta) {
     if (root.items.length === 0)
       return;
+    if (!root.cursorActive) {
+      root.cursorActive = true;
+      return;
+    }
     root.cursor = Math.max(0, Math.min(root.items.length - 1, root.cursor + delta));
-    list.positionViewAtIndex(root.cursor, ListView.Contain);
+    root.scrollCursorIntoView();
+  }
+
+  function cursorItem() {
+    return root.cursorActive ? root.items[root.cursor] : null;
+  }
+
+  function scrollCursorIntoView() {
+    Qt.callLater(function () {
+      var row = rowFor(root.cursor);
+      if (!row || !panelFlick)
+        return;
+      var margin = Style.space(6);
+      var top = row.mapToItem(panelFlick.contentItem, 0, 0).y;
+      var bottom = top + row.height;
+      var maxY = Math.max(0, panelFlick.contentHeight - panelFlick.height);
+      if (top < panelFlick.contentY + margin)
+        panelFlick.contentY = Math.max(0, top - margin);
+      else if (bottom > panelFlick.contentY + panelFlick.height - margin)
+        panelFlick.contentY = Math.min(maxY, bottom + margin - panelFlick.height);
+    });
+  }
+
+  function rowFor(index) {
+    for (var g = 0; g < groupRepeater.count; g++) {
+      var group = groupRepeater.itemAt(g);
+      for (var r = 0; group && r < group.rows.count; r++) {
+        var row = group.rows.itemAt(r);
+        if (row && row.item.index === index)
+          return row;
+      }
+    }
+    return null;
   }
 
   // Opens the feature and ticks the item. The panel closes first so a menu
@@ -199,6 +254,10 @@ Panel {
   onOpenedChanged: {
     if (!root.opened)
       return;
+    root.cursorActive = false;
+    root.cursor = 0;
+    if (panelFlick)
+      panelFlick.contentY = 0;
     root.refreshLocal();
     root.fetchReleases(false);
     Qt.callLater(function () {
@@ -338,8 +397,8 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keys
-    contentWidth: popout.fittedContentWidth(Style.space(420))
-    contentHeight: popout.fittedContentHeight(content.implicitHeight, Style.space(820))
+    contentWidth: popout.fittedContentWidth(Style.space(380))
+    contentHeight: popout.fittedContentHeight(column.implicitHeight, Style.space(560))
 
     PanelKeyCatcher {
       id: keys
@@ -356,222 +415,249 @@ Panel {
       }
       onReturnRequested: {
         root.returnPending = true;
-        root.toggleExpanded(root.items[root.cursor]);
+        root.toggleExpanded(root.cursorItem());
       }
       onActivateRequested: {
         if (root.returnPending)
           root.returnPending = false;
         else
-          root.toggleSeen(root.items[root.cursor]);
+          root.toggleSeen(root.cursorItem());
       }
       onTextKey: function (text) {
         if (text === "t")
-          root.tryItem(root.items[root.cursor]);
+          root.tryItem(root.cursorItem());
         else if (text === "a")
           root.toggleAll();
       }
 
-      Column {
-        id: content
+      Flickable {
+        id: panelFlick
 
-        width: parent.width
-        spacing: Style.space(6)
-
-        // One compact line: the release and its progress, with two icon
-        // actions on the right.
-        Item {
-          width: parent.width
-          implicitHeight: Math.max(headerText.implicitHeight, markAll.implicitHeight)
-
-          Text {
-            id: headerText
-
-            anchors.left: parent.left
-            anchors.right: actions.left
-            anchors.rightMargin: Style.space(8)
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.newIcon + "  " + (!root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total)))
-            textFormat: Text.PlainText
-            color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
-            font.bold: true
-            elide: Text.ElideRight
-          }
-
-          Row {
-            id: actions
-
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
-
-            Button {
-              id: markAll
-
-              visible: root.items.length > 0
-              iconText: root.unseen > 0 ? "󰸞" : "󰛌"
-              tooltipText: root.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconSize: Style.font.body
-              onClicked: root.toggleAll()
-            }
-
-            Button {
-              iconText: "󰏌"
-              tooltipText: root.notes && root.notes.sourceTag !== root.notes.tag ? strings.t("hero.notesFrom").arg(root.notes.sourceTag) : strings.t("hero.notes")
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-              iconSize: Style.font.body
-              onClicked: root.openNotes()
-            }
-          }
-        }
-
-        PanelSeparator {
-          width: parent.width
-          foreground: root.foreground
-        }
-
-        ListView {
-          id: list
-
-          width: parent.width
-          height: Math.min(contentHeight, Style.space(420))
-          visible: root.items.length > 0
-          clip: true
-          model: root.items
-          currentIndex: root.cursor
-          boundsBehavior: Flickable.StopAtBounds
-
-          delegate: Rectangle {
-            id: row
-
-            required property var modelData
-            required property int index
-            readonly property bool hot: index === root.cursor
-            readonly property color ink: hot ? Color.menu.selectedText : root.foreground
-
-            width: ListView.view.width
-            height: Math.max(body.implicitHeight, tryButton.implicitHeight) + Style.space(8)
-            radius: Style.cornerRadius / 2
-            color: hot ? Color.menu.selectedBackground : "transparent"
-
-            MouseArea {
-              anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onEntered: root.cursor = row.index
-              onClicked: root.toggleExpanded(row.modelData)
-            }
-
-            Text {
-              id: check
-
-              anchors.left: parent.left
-              anchors.leftMargin: Style.spacing.rowPaddingX
-              anchors.top: body.top
-              width: Style.space(22)
-              text: row.modelData.used ? root.usedIcon : row.modelData.seen ? root.checkedIcon : root.uncheckedIcon
-              textFormat: Text.PlainText
-              color: row.hot ? row.ink : row.modelData.seen ? root.accent : row.modelData.breaking ? root.urgent : row.ink
-              opacity: row.modelData.seen ? 0.9 : 0.65
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-
-              MouseArea {
-                anchors.fill: parent
-                anchors.margins: -Style.space(6)
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.toggleSeen(row.modelData)
-              }
-            }
-
-            Column {
-              id: body
-
-              anchors.left: check.right
-              anchors.right: tryButton.visible ? tryButton.left : parent.right
-              anchors.rightMargin: Style.spacing.rowPaddingX
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(4)
-
-              Text {
-                width: parent.width
-                text: String(row.modelData.title || "")
-                textFormat: Text.PlainText
-                color: row.ink
-                opacity: row.modelData.seen ? 0.55 : 1
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                font.bold: !row.modelData.seen
-                wrapMode: Text.WordWrap
-                maximumLineCount: row.modelData.expanded ? 6 : 2
-                elide: Text.ElideRight
-              }
-
-              Text {
-                width: parent.width
-                visible: !!row.modelData.expanded && text !== ""
-                text: String(row.modelData.detail || "")
-                textFormat: Text.PlainText
-                color: row.ink
-                opacity: 0.72
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                wrapMode: Text.WordWrap
-                lineHeight: 1.15
-              }
-            }
-
-            // Shown only on the row under the cursor or the mouse.
-            Button {
-              id: tryButton
-
-              anchors.right: parent.right
-              anchors.rightMargin: Style.spacing.rowPaddingX
-              anchors.verticalCenter: parent.verticalCenter
-              visible: row.hot && String(row.modelData.tryLabel || "") !== ""
-              text: String(row.modelData.tryLabel || "")
-              tooltipText: strings.t("action.tryTooltip")
-              bordered: true
-              foreground: row.ink
-              fontFamily: root.fontFamily
-              fontSize: Style.font.caption
-              onClicked: root.tryItem(row.modelData)
-            }
-          }
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        ScrollBar.vertical: ScrollBar {
+          policy: ScrollBar.AsNeeded
         }
 
         Column {
-          width: parent.width
-          visible: root.items.length === 0
-          spacing: Style.space(6)
+          id: column
+
+          width: panelFlick.width
+          spacing: Style.space(12)
+
+          PanelHero {
+            width: parent.width
+            title: strings.t("hero.title")
+            meta: !root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total))
+            foreground: root.foreground
+            fontFamily: root.fontFamily
+
+            iconComponent: Component {
+              Text {
+                text: root.newIcon
+                textFormat: Text.PlainText
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.display
+              }
+            }
+
+            // PanelHero resolves `root` to itself inside this component, so
+            // the panel's state is reached through `popout.owner`.
+            trailingControl: Component {
+              Row {
+                spacing: Style.space(2)
+
+                PanelActionButton {
+                  visible: popout.owner.items.length > 0
+                  iconText: popout.owner.unseen > 0 ? popout.owner.markAllIcon : popout.owner.clearAllIcon
+                  tooltipText: popout.owner.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
+                  foreground: popout.owner.foreground
+                  fontFamily: popout.owner.fontFamily
+                  onClicked: popout.owner.toggleAll()
+                }
+
+                PanelActionButton {
+                  iconText: popout.owner.notesIcon
+                  tooltipText: popout.owner.notes && popout.owner.notes.sourceTag !== popout.owner.notes.tag ? strings.t("hero.notesFrom").arg(popout.owner.notes.sourceTag) : strings.t("hero.notes")
+                  foreground: popout.owner.foreground
+                  fontFamily: popout.owner.fontFamily
+                  onClicked: popout.owner.openNotes()
+                }
+              }
+            }
+          }
 
           Text {
             width: parent.width
+            visible: root.items.length === 0
             text: root.errorText !== "" ? root.errorText : root.fetching || !root.notes ? strings.t("empty.loading") : strings.t("empty.noNotes")
             textFormat: Text.PlainText
-            color: root.foreground
-            opacity: 0.6
+            color: root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            horizontalAlignment: Text.AlignHCenter
+            font.pixelSize: Style.font.bodySmall
             wrapMode: Text.WordWrap
           }
 
-          Button {
-            anchors.horizontalCenter: parent.horizontalCenter
-            visible: root.errorText !== ""
-            text: strings.t("action.refresh")
-            bordered: true
-            foreground: root.foreground
-            fontFamily: root.fontFamily
-            fontSize: Style.font.caption
-            onClicked: root.fetchReleases(true)
+          Repeater {
+            id: groupRepeater
+
+            model: root.groups
+
+            Column {
+              id: group
+
+              required property var modelData
+              property alias rows: rowRepeater
+
+              width: column.width
+              spacing: Style.space(10)
+
+              PanelSeparator {
+                width: parent.width
+                foreground: root.foreground
+              }
+
+              PanelSectionHeader {
+                text: String(group.modelData.title).toUpperCase()
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+              }
+
+              Column {
+                width: parent.width
+                spacing: Style.space(4)
+
+                Repeater {
+                  id: rowRepeater
+
+                  model: group.modelData.items
+
+                  ItemRow {
+                    required property var modelData
+
+                    width: group.width
+                    item: modelData
+                  }
+                }
+              }
+            }
           }
         }
+      }
+    }
+  }
+
+  // One checklist item, built like the rows of the built-in panels: shared
+  // cursor chrome, a checkbox like MultiSelect's, a title over a dim caption,
+  // and an icon action on the trailing edge.
+  component ItemRow: CursorSurface {
+    id: itemRow
+
+    property var item: ({})
+    readonly property bool canTry: String(item.tryLabel || "") !== ""
+
+    hasCursor: root.cursorActive && root.cursor === item.index
+    foreground: root.foreground
+    implicitHeight: rowContent.implicitHeight + Style.spacing.rowPaddingX
+
+    MouseArea {
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onEntered: {
+        root.cursorActive = true;
+        root.cursor = itemRow.item.index;
+      }
+      onClicked: root.toggleExpanded(itemRow.item)
+    }
+
+    RowLayout {
+      id: rowContent
+
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.leftMargin: Style.space(10)
+      anchors.rightMargin: Style.space(10)
+      spacing: Style.space(8)
+
+      BorderSurface {
+        id: checkbox
+
+        Layout.alignment: Qt.AlignTop
+        Layout.topMargin: Style.space(2)
+        width: Style.space(16)
+        height: Style.space(16)
+        radius: Math.max(2, Style.cornerRadius / 2)
+        color: itemRow.item.seen ? Style.selectedFillFor(root.foreground, root.accent) : "transparent"
+        borderSpec: itemRow.item.seen ? Border.controlSpec("selected", root.foreground, root.accent) : Border.controlSpec("normal", root.foreground, root.accent)
+
+        Text {
+          anchors.centerIn: parent
+          visible: !!itemRow.item.seen
+          text: "✓"
+          textFormat: Text.PlainText
+          color: Style.selectedStateColor(root.foreground, root.accent)
+          font.family: root.fontFamily
+          font.pixelSize: Math.round(checkbox.height * 0.85)
+          font.bold: true
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          anchors.margins: -Style.space(6)
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.toggleSeen(itemRow.item)
+        }
+      }
+
+      ColumnLayout {
+        Layout.fillWidth: true
+        spacing: Style.space(1)
+
+        Text {
+          Layout.fillWidth: true
+          text: String(itemRow.item.title || "")
+          textFormat: Text.PlainText
+          color: itemRow.item.seen ? root.dim : root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          wrapMode: Text.WordWrap
+          maximumLineCount: itemRow.item.expanded ? 6 : 2
+          elide: Text.ElideRight
+        }
+
+        // Collapsed: the first line of the detail, or why it was ticked.
+        // Expanded: the whole detail.
+        Text {
+          Layout.fillWidth: true
+          visible: text !== ""
+          text: itemRow.item.expanded ? String(itemRow.item.detail || "") : itemRow.item.used ? strings.t("item.used") : String(itemRow.item.detail || "").split("\n")[0].replace(/^\s*•\s*/, "")
+          textFormat: Text.PlainText
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: itemRow.item.expanded ? Text.WordWrap : Text.NoWrap
+          elide: Text.ElideRight
+          lineHeight: itemRow.item.expanded ? 1.15 : 1
+        }
+      }
+
+      PanelActionButton {
+        Layout.alignment: Qt.AlignTop
+        visible: itemRow.canTry
+        iconText: root.tryIcon
+        tooltipText: String(itemRow.item.tryLabel || "")
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        hasCursor: itemRow.hasCursor
+        onClicked: root.tryItem(itemRow.item)
       }
     }
   }

@@ -402,7 +402,7 @@ function checklist(notes) {
     if (hasKey && !section.key) continue
     for (var j = 0; j < section.items.length; j++) {
       var entry = section.items[j]
-      items.push({ id: entry.id, title: entry.title, detail: entry.detail, breaking: section.breaking })
+      items.push({ id: entry.id, title: entry.title, detail: entry.detail, section: section.title, breaking: section.breaking })
     }
   }
   return items
