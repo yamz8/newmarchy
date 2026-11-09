@@ -4,11 +4,9 @@
     "one": "newmarchy · %1 new thing to see",
     "other": "newmarchy · %1 new things to see"
   },
-  "hero.meta": "Omarchy %1 · %2 of %3 seen",
-  "hero.metaLoading": "What's new in Omarchy",
+  "hero.meta": "%1 of %2 seen",
+  "hero.metaLoading": "Fetching release notes",
   "hero.notes": "Release notes",
-  "action.markAll": "Mark all seen",
-  "action.clearAll": "Clear",
   "action.refresh": "Refresh",
   "empty.loading": "Fetching release notes…",
   "empty.noNotes": "Nothing to check off in this release",
@@ -18,8 +16,9 @@
   "error.unreadable": "GitHub returned an unreadable response",
   "error.api": "GitHub refused the request: %1",
   "action.tryTooltip": "Open it and tick it off",
-  "hero.allSeen": "Omarchy %1 · all seen",
+  "hero.allSeen": "All caught up",
   "hero.notesFrom": "Notes from %1",
-  "hero.title": "What's new",
-  "item.used": "Ticked because you've used it"
+  "hero.title": "Omarchy %1",
+  "item.used": "Ticked because you've used it",
+  "hero.titleLoading": "What's new"
 }

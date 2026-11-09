@@ -23,8 +23,6 @@ Panel {
   // Font, so it stays monochrome and theme-tinted. No other widget uses it.
   readonly property string newIcon: "󰎔"
   readonly property string notesIcon: "󰏌"
-  readonly property string markAllIcon: "󰸞"
-  readonly property string clearAllIcon: "󰛌"
   readonly property string tryIcon: "󰐊"
 
   // Thirty releases of notes are about 300 kB. 4 MiB is headroom that still
@@ -452,42 +450,97 @@ Panel {
 
           PanelHero {
             width: parent.width
-            title: strings.t("hero.title")
-            meta: !root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen").arg(root.notes.tag) : strings.t("hero.meta").arg(root.notes.tag).arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total))
+            title: root.notes ? strings.t("hero.title").arg(String(root.notes.tag).replace(/^v/, "")) : strings.t("hero.titleLoading")
+            meta: !root.notes ? strings.t("hero.metaLoading") : root.unseen === 0 && root.counts.total > 0 ? strings.t("hero.allSeen") : strings.t("hero.meta").arg(Commons.I18n.formatNumber(root.counts.done)).arg(Commons.I18n.formatNumber(root.counts.total))
             foreground: root.foreground
             fontFamily: root.fontFamily
 
+            // A progress ring: how much of this release you've seen.
             iconComponent: Component {
-              Text {
-                text: root.newIcon
-                textFormat: Text.PlainText
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.display
+              Canvas {
+                id: ring
+
+                readonly property var owner: popout.owner
+                readonly property real fraction: owner.counts.total > 0 ? owner.counts.done / owner.counts.total : 0
+                readonly property color track: Qt.rgba(owner.foreground.r, owner.foreground.g, owner.foreground.b, 0.18)
+                readonly property color fill: Commons.Color.accent
+
+                implicitWidth: Style.font.displayLarge
+                implicitHeight: implicitWidth
+                onFractionChanged: requestPaint()
+                onFillChanged: requestPaint()
+                onTrackChanged: requestPaint()
+
+                onPaint: {
+                  const ctx = getContext("2d")
+                  const line = Math.max(2, Math.round(width / 9))
+                  const r = (Math.min(width, height) - line) / 2
+                  ctx.reset()
+                  ctx.lineWidth = line
+                  ctx.lineCap = "round"
+                  ctx.strokeStyle = track
+                  ctx.beginPath()
+                  ctx.arc(width / 2, height / 2, r, 0, 2 * Math.PI)
+                  ctx.stroke()
+                  if (fraction > 0) {
+                    ctx.strokeStyle = fill
+                    ctx.beginPath()
+                    ctx.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * fraction)
+                    ctx.stroke()
+                  }
+                }
+
+                Text {
+                  anchors.centerIn: parent
+                  visible: ring.fraction >= 1
+                  text: "✓"
+                  textFormat: Text.PlainText
+                  color: ring.fill
+                  font.family: ring.owner.fontFamily
+                  font.pixelSize: Style.font.title
+                  font.bold: true
+                }
               }
             }
 
             // PanelHero resolves `root` to itself inside this component, so
             // the panel's state is reached through `popout.owner`.
+            // One accent-tinted square, like the Agents panel's hero buttons.
+            // Mark all / clear stays on the `a` key.
             trailingControl: Component {
-              Row {
-                spacing: Style.space(2)
+              Rectangle {
+                id: notesButton
 
-                PanelActionButton {
-                  visible: popout.owner.items.length > 0
-                  iconText: popout.owner.unseen > 0 ? popout.owner.markAllIcon : popout.owner.clearAllIcon
-                  tooltipText: popout.owner.unseen > 0 ? strings.t("action.markAll") : strings.t("action.clearAll")
-                  foreground: popout.owner.foreground
-                  fontFamily: popout.owner.fontFamily
-                  onClicked: popout.owner.toggleAll()
+                readonly property var owner: popout.owner
+                readonly property color accent: Commons.Color.accent
+
+                implicitWidth: Style.space(34)
+                implicitHeight: implicitWidth
+                radius: Style.cornerRadius
+                color: Qt.rgba(accent.r, accent.g, accent.b, notesMouse.containsMouse ? 0.3 : 0.12)
+                border.width: notesMouse.containsMouse ? Math.max(1, Style.hoverBorderWidth) : 0
+                border.color: accent
+
+                Text {
+                  anchors.centerIn: parent
+                  text: notesButton.owner.notesIcon
+                  textFormat: Text.PlainText
+                  color: notesButton.accent
+                  font.family: notesButton.owner.fontFamily
+                  font.pixelSize: Style.font.heading
                 }
 
-                PanelActionButton {
-                  iconText: popout.owner.notesIcon
-                  tooltipText: popout.owner.notes && popout.owner.notes.sourceTag !== popout.owner.notes.tag ? strings.t("hero.notesFrom").arg(popout.owner.notes.sourceTag) : strings.t("hero.notes")
-                  foreground: popout.owner.foreground
-                  fontFamily: popout.owner.fontFamily
-                  onClicked: popout.owner.openNotes()
+                MouseArea {
+                  id: notesMouse
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: notesButton.owner.openNotes()
+                }
+
+                PanelToolTip {
+                  visible: notesMouse.containsMouse
+                  text: notesButton.owner.notes && notesButton.owner.notes.sourceTag !== notesButton.owner.notes.tag ? strings.t("hero.notesFrom").arg(notesButton.owner.notes.sourceTag) : strings.t("hero.notes")
                 }
               }
             }

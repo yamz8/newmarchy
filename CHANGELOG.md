@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1 — 2026-11-09
+
+- Cleaner header: the title is the release ("Omarchy 4.5.0"), the meta
+  line is just the progress ("8 of 20 seen", "All caught up"), and a
+  progress ring in the theme accent replaces the NEW glyph.
+- One header action: release notes, as an accent-tinted square like the
+  Agents panel. Mark all seen moved off the header and stays on the `a`
+  key.
+
 ## 1.3.0 — 2026-11-07
 
 - Panel rebuilt on the same pieces as Omarchy's built-in panels: a
