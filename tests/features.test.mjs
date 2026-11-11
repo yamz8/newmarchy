@@ -26,10 +26,20 @@ test("every mapped feature names a real item in the omarchy.org post or the rc3 
 
 test("the omarchy.org checklist keeps its Try buttons and detection", () => {
   const mapped = newsTitles.filter((title) => N.featureFor("v4.5.0", title))
-  assert.equal(mapped.length, 9)
-  const ids = plain(N.detectedIds(news, ["quake", "floating"]))
+  assert.equal(mapped.length, 14)
+  const ids = plain(N.detectedIds(news, ["quake", "floating", "hype", "gliff"]))
   const byId = Object.fromEntries(news.sections.flatMap((s) => s.items.map((i) => [i.id, i.title])))
-  assert.deepEqual(ids.map((id) => byId[id]).sort(), ["Agent upgrades", "Floating workspaces with a dock"])
+  assert.deepEqual(ids.map((id) => byId[id]).sort(), ["Agent upgrades", "Floating workspaces with a dock", "Gliff", "Hype"])
+})
+
+test("each new app's Try is offered only once the app is found installed", () => {
+  const hype = N.featureFor("v4.5.0", "Hype")
+  assert.equal(N.canTry(hype, []), false)
+  assert.equal(N.canTry(hype, ["has-signed"]), false)
+  assert.equal(N.canTry(hype, ["has-hype"]), true)
+  assert.equal(N.canTry(N.featureFor("v4.5.0", "Agent upgrades"), []), true)
+  assert.equal(N.canTry(null, ["has-hype"]), false)
+  assert.deepEqual(plain(N.parseSignals("has-gliff gliff has-nothing")), ["has-gliff", "gliff"])
 })
 
 const strings = JSON.parse(readFileSync(new URL("../i18n/en.json", import.meta.url), "utf8"))

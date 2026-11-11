@@ -34,13 +34,20 @@ fi
 background=$(readlink -f "$state/omarchy/current/background" 2>/dev/null)
 [[ ${background,,} =~ \.(mp4|webm|mkv|mov|m4v)$ ]] && echo video-background
 
-# One of the new default apps has been run (each keeps state once opened).
-for app in hype signed disktree monologue; do
+# Each new default app: has-<app> when it is installed, so its Try is offered,
+# and <app> once it has been run (each keeps state once opened). new-apps,
+# for the release candidate's single item, is any of them run.
+ran=""
+for app in hype signed disktree monologue gliff; do
+  if [[ -e /usr/share/applications/$app.desktop || -e $share/applications/$app.desktop ]]; then
+    echo "has-$app"
+  fi
   if [[ -e $config/$app || -e $state/$app || -e $share/$app ]]; then
-    echo new-apps
-    break
+    echo "$app"
+    ran=1
   fi
 done
+[[ -n $ran ]] && echo new-apps
 
 # One of the two new themes is in use.
 theme=$(cat "$state/omarchy/current/theme.name" 2>/dev/null)

@@ -1,6 +1,6 @@
 // Hand-written knowledge about particular release items: a "Try it" command
-// that opens the feature, and a signal from bin/newmarchy-detect that shows
-// the feature has been used. Release notes are prose, so none of this can be
+// that opens the feature, an optional signal it needs before it is offered,
+// and a signal from bin/newmarchy-detect that shows the feature has been used. Release notes are prose, so none of this can be
 // derived from them; it is keyed by release and by the item's title as
 // parsed, and tests/features.test.mjs fails if a title stops matching
 // both the omarchy.org post and the rc3 notes.
@@ -22,10 +22,40 @@ var FEATURES = {
       tryLabel: "try.language",
       signal: "language"
     },
-    "Five new default apps": {
+    "Hype": {
       try: ["uwsm-app", "--", "hype.desktop"],
       tryLabel: "try.hype",
-      signal: "new-apps"
+      needs: "has-hype",
+      signal: "hype"
+    },
+    "Signed": {
+      try: ["uwsm-app", "--", "signed.desktop"],
+      tryLabel: "try.signed",
+      needs: "has-signed",
+      signal: "signed"
+    },
+    "Disktree": {
+      try: ["uwsm-app", "--", "disktree.desktop"],
+      tryLabel: "try.disktree",
+      needs: "has-disktree",
+      signal: "disktree"
+    },
+    "Monologue": {
+      try: ["uwsm-app", "--", "monologue.desktop"],
+      tryLabel: "try.monologue",
+      needs: "has-monologue",
+      signal: "monologue"
+    },
+    "Gliff": {
+      try: ["uwsm-app", "--", "gliff.desktop"],
+      tryLabel: "try.gliff",
+      needs: "has-gliff",
+      signal: "gliff"
+    },
+    "Elsewhen": {
+      try: ["omarchy-shell", "shell", "toggle", "omarchy.elsewhen"],
+      tryLabel: "try.elsewhen",
+      signal: "elsewhen"
     },
     "Agent upgrades": {
       try: ["hyprctl", "dispatch", "hl.dsp.workspace.toggle_special(\"qconsole\")"],
@@ -120,7 +150,9 @@ var FEATURES = {
 
 // Signal names bin/newmarchy-detect may print. Anything else in its output
 // is ignored.
+var APPS = ["hype", "signed", "disktree", "monologue", "gliff"]
 var SIGNALS = ["language", "floating", "quake", "elsewhen", "video-background", "new-apps", "new-themes"]
+  .concat(APPS, APPS.map(function (app) { return "has-" + app }))
 
 function releaseKey(tag) {
   var match = /^v?(\d+(?:\.\d+){1,3})$/.exec(String(tag || ""))
@@ -150,6 +182,12 @@ function parseSignals(raw) {
   for (var i = 0; i < words.length && i < 64; i++)
     if (SIGNALS.indexOf(words[i]) >= 0 && found.indexOf(words[i]) < 0) found.push(words[i])
   return found
+}
+
+// Whether a feature's Try can run here: one that names an app it needs
+// ("has-hype") shows its button only once detection has found that app.
+function canTry(feature, signals) {
+  return !!(feature && feature.try && (!feature.needs || signals.indexOf(feature.needs) >= 0))
 }
 
 // Item ids in notes whose feature's signal is among the signals found.

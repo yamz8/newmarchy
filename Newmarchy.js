@@ -357,6 +357,9 @@ function htmlText(fragment) {
 // the detail. A topic that is only a list ("More features", "Security",
 // "Fixes") is a section of its own, one item per bullet. Topics stay in
 // page order under one key section; the list sections follow, not counted.
+// A paragraph that opens on a bold name, after at most a few lead-in words.
+var NAMED_PARAGRAPH = /^\s*(?:[^<]{0,24})<strong>([^<]{1,60})<\/strong>/i
+
 function parseNewsPage(html) {
   var text = String(html || "")
   if (text.length > MAX_PAGE) text = text.slice(0, MAX_PAGE)
@@ -373,7 +376,7 @@ function parseNewsPage(html) {
     var tag = match[1].toLowerCase()
     if (tag === "h2") {
       var heading = clip(htmlText(match[2]), MAX_TITLE)
-      block = heading === "" ? null : { title: heading, prose: 0, lines: [], bullets: [] }
+      block = heading === "" ? null : { title: heading, prose: 0, lines: [], bullets: [], named: [] }
       if (block) blocks.push(block)
       continue
     }
@@ -383,6 +386,12 @@ function parseNewsPage(html) {
       if (para !== "") {
         block.prose++
         block.lines.push(para)
+        // A paragraph that opens on a bold name ("<strong>Hype</strong>
+        // makes…", "And there's <strong>Elsewhen</strong>…") introduces one
+        // thing of its own.
+        var lead = NAMED_PARAGRAPH.exec(match[2])
+        var name = lead ? clip(htmlText(lead[1]), MAX_TITLE) : ""
+        if (name !== "") block.named.push({ title: name, detail: para })
       }
       continue
     }
@@ -402,7 +411,9 @@ function parseNewsPage(html) {
     block.lines.push("• " + bullet)
   }
 
-  var topics = { title: "Highlights", key: true, breaking: false, items: [] }
+  // The page puts no heading over its topics, so neither does the panel.
+  // Item ids still hang off "Highlights", which keeps earlier ticks.
+  var topics = { title: "", key: true, breaking: false, items: [] }
   var lists = []
   var itemCount = 0
   for (var i = 0; i < blocks.length && itemCount < MAX_ITEMS; i++) {
@@ -419,9 +430,18 @@ function parseNewsPage(html) {
       continue
     }
     if (b.prose === 0) continue
+    // A topic that is a run of named things, such as "Five new default
+    // apps", lists each thing in its place, so each can be tried and ticked.
+    if (b.named.length >= 2) {
+      for (var n = 0; n < b.named.length && itemCount < MAX_ITEMS; n++) {
+        topics.items.push({ id: itemId("Highlights", b.named[n].title), title: b.named[n].title, detail: clip(b.named[n].detail, MAX_DETAIL) })
+        itemCount++
+      }
+      continue
+    }
     // Paragraphs and bullets in page order, so a topic such as "Changed
     // hotkeys" keeps each list under the line that introduces it.
-    topics.items.push({ id: itemId(topics.title, b.title), title: b.title, detail: clip(b.lines.join("\n"), MAX_DETAIL) })
+    topics.items.push({ id: itemId("Highlights", b.title), title: b.title, detail: clip(b.lines.join("\n"), MAX_DETAIL) })
     itemCount++
   }
   return (topics.items.length > 0 ? [topics] : []).concat(lists)

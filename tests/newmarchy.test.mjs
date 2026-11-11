@@ -280,18 +280,42 @@ test("a stable release's omarchy.org link is found, and only that shape of link"
   assert.equal(N.newsUrlFor({ ...stable, body: "Notes: https://omarchy.org/news/2026/11/omarchy-4-5" }), "https://omarchy.org/news/2026/11/omarchy-4-5/")
 })
 
-test("the omarchy.org post follows the page: 17 topics, then its lists", () => {
+test("the omarchy.org post follows the page: its topics, then its lists", () => {
   const sections = plain(N.parseNewsPage(page))
   assert.deepEqual(sections.map((s) => [s.title, s.key, s.items.length]), [
-    ["Highlights", true, 17],
+    ["", true, 22],
     ["More features", false, 29],
     ["Security", false, 13],
     ["Fixes", false, 215]
   ])
   const topics = sections[0].items.map((i) => i.title)
   assert.equal(topics[0], "Floating workspaces with a dock")
-  assert.equal(topics[16], "Changed hotkeys")
+  assert.equal(topics[21], "Changed hotkeys")
   assert.ok(topics.includes("Omarchy on Apple Silicon"))
+})
+
+test("a topic of named apps lists each app in its place", () => {
+  const items = plain(N.parseNewsPage(page))[0].items
+  const topics = items.map((i) => i.title)
+  assert.ok(!topics.includes("Five new default apps"))
+  assert.deepEqual(topics.slice(4, 12), [
+    "Sign in to captive Wi-Fi portals",
+    "Hype", "Signed", "Disktree", "Monologue", "Gliff", "Elsewhen",
+    "Microsoft 365"
+  ])
+  const hype = items.find((i) => i.title === "Hype")
+  assert.match(hype.detail, /^Hype makes presentations from a single Markdown file/)
+  assert.ok(!hype.detail.includes("Signed"))
+  assert.match(items.find((i) => i.title === "Elsewhen").detail, /^And there’s Elsewhen, a world clock/)
+})
+
+test("one bold name in a topic does not split it, and ids keep their old key", () => {
+  const one = plain(N.parseNewsPage('<article><h2>Tools</h2><p><strong>Hype</strong> is new.</p><p>More text.</p></article>'))
+  assert.deepEqual(one[0].items.map((i) => i.title), ["Tools"])
+  const two = plain(N.parseNewsPage('<article><h2>Apps</h2><p><strong>A</strong> one.</p><p>And <strong>B</strong> two.</p></article>'))
+  assert.deepEqual(two[0].items.map((i) => i.title), ["A", "B"])
+  const topic = plain(N.parseNewsPage(page))[0].items[0]
+  assert.equal(topic.id, plain(N.itemId("Highlights", "Floating workspaces with a dock")))
 })
 
 test("a topic's lists stay under the line that introduces them", () => {
@@ -327,7 +351,7 @@ test("with the post read, the checklist and the link follow it", () => {
   const notes = N.withNews(N.notesFor(N.parseReleases(feed), "v4.5.0"), N.parseNewsPage(page), "https://omarchy.org/news/2026/11/omarchy-4-5/")
   assert.equal(notes.sourceUrl, "https://omarchy.org/news/2026/11/omarchy-4-5/")
   assert.equal(notes.sourceLabel, "omarchy.org")
-  assert.deepEqual(plain(N.progress(notes, {})), { done: 0, total: 17 })
+  assert.deepEqual(plain(N.progress(notes, {})), { done: 0, total: 22 })
   assert.deepEqual(plain(N.moreSections(notes)).map((s) => [s.title, s.items.length]), [
     ["More features", 29],
     ["Security", 13],

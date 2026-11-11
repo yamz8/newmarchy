@@ -35,5 +35,9 @@
   "try.cardBody": "It follows your theme. Press Super + Comma to dismiss it.",
   "try.keysTitle": "Try the new notification keys",
   "try.keysBody": "Super + Comma acts on this card. Super + Ctrl + Comma takes the keyboard.",
-  "try.jadeHorse": "Switch to Jade Horse"
+  "try.jadeHorse": "Switch to Jade Horse",
+  "try.signed": "Open Signed",
+  "try.disktree": "Open Disktree",
+  "try.monologue": "Open Monologue",
+  "try.gliff": "Open Gliff"
 }

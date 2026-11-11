@@ -9,8 +9,8 @@ after an update you can tell what's new and know you've actually seen it.
   fills as you check items off, and an accent dot shows while anything is
   still unseen. Hover it for the count.
 - **Click** to open the checklist. It follows the release notes: for 4.5
-  that's the 17 topics of the [omarchy.org post](https://omarchy.org/news/2026/11/omarchy-4-5/),
-  in page order. The long lists under them (More features, Security, Fixes)
+  that's the topics of the [omarchy.org post](https://omarchy.org/news/2026/11/omarchy-4-5/),
+  in page order, with each of the new default apps on a line of its own. The long lists under them (More features, Security, Fixes)
   sit collapsed underneath, readable but not counted.
 - **Click an item** to read its full text, and **tick its box** once you've
   seen it.
@@ -64,7 +64,9 @@ A stable release such as v4.5.0 is a short summary on GitHub with a link to
 its post on omarchy.org. When the release links to
 `https://omarchy.org/news/<year>/<month>/<slug>/`, newmarchy reads that page
 once and builds the checklist from it: each `<h2>` topic written as prose is
-an item, and a topic that is only a list is a collapsed section.
+an item, and a topic that is only a list is a collapsed section. A topic
+whose paragraphs each open on a bold name, as "Five new default apps" does
+(**Hype** …, **Signed** …), becomes one item per name in the same place.
 
 Without such a link, or if the page can't be read, it falls back to GitHub.
 When a final release has less to check off than its last release candidate,
@@ -85,11 +87,13 @@ shell starts, when the panel opens, and once an hour. For 4.5.0 it ticks:
 | 50 languages and 5 input methods | `omarchy-language` is not `en` |
 | Floating workspaces with a dock | a workspace layout file says `floating` |
 | Agent upgrades | the `special:qconsole` workspace (the Quake console) exists |
-| Five new default apps | Hype, Signed, Disktree, or Monologue has a config or state directory |
+| Hype, Signed, Disktree, Monologue, Gliff | that app has a config or state directory |
+| Elsewhen | Elsewhen has cities of your own in the bar |
 | Video backgrounds and theme intros | the current background is a video file |
 | Jade Horse joins the default themes | Jade Horse or Starship is the current theme |
 
-Each item is ticked by detection at most once. If you untick it, it stays
+The ▶ on an app's line shows only when that app is installed. Each item is
+ticked by detection at most once. If you untick it, it stays
 unticked. Items ticked this way say so under their title.
 
 The try commands and signals are written by hand per release in

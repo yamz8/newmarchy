@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 — 2026-11-11
+
+- "Five new default apps" is split into its apps, Hype, Signed, Disktree,
+  Monologue, Gliff, and Elsewhen, each a line of its own in the topic's place,
+  as the post writes them. Each has its own ▶, shown when the app is
+  installed, and its own detection.
+- The made-up "Highlights" heading is gone; the post puts none over its
+  topics. Earlier ticks are kept.
+
 ## 1.5.1 — 2026-11-11
 
 - ▶ on "Jade Horse joins the default themes" switches to Jade Horse instead

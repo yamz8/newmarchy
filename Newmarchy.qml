@@ -102,7 +102,7 @@ Panel {
     var list = N.checklist(root.notes);
     for (var i = 0; i < list.length; i++) {
       var feature = F.featureFor(root.notes.tag, list[i].title);
-      list[i].tryLabel = feature && feature.try ? feature.tryLabel : "";
+      list[i].tryLabel = F.canTry(feature, root.detectedSignals) ? feature.tryLabel : "";
       list[i].seen = N.isSeen(root.seen, root.notes.tag, list[i].id);
       list[i].used = list[i].seen && N.wasAutoTicked(root.seen, root.notes.tag, list[i].id);
       list[i].expanded = !!root.expanded[list[i].id];
@@ -234,7 +234,7 @@ Panel {
 
   function tryItem(item) {
     var feature = item && root.notes ? F.featureFor(root.notes.tag, item.title) : null;
-    if (!feature || !feature.try)
+    if (!F.canTry(feature, root.detectedSignals))
       return;
     root.setChecked([item.id], true);
     root.close();
@@ -408,6 +408,7 @@ Panel {
       waitForEnd: true
       onStreamFinished: {
         root.detectedSignals = F.parseSignals(String(text || "").slice(0, 4096));
+        root.refreshItems();
         root.applyDetection();
       }
     }
@@ -692,6 +693,7 @@ Panel {
               }
 
               PanelSectionHeader {
+                visible: String(group.modelData.title) !== ""
                 text: String(group.modelData.title).toUpperCase()
                 foreground: root.foreground
                 fontFamily: root.fontFamily
