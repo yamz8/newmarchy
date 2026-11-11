@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0 — 2026-11-11
+
+- The bar icon is the panel's progress ring, in the bar's colour, with an
+  accent dot while anything is unseen. The number badge is gone; the count
+  is in the tooltip.
+
 ## 1.4.1 — 2026-11-11
 
 - The Try tooltips and the test notifications are translatable strings in

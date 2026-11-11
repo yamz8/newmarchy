@@ -5,8 +5,9 @@ after an update you can tell what's new and know you've actually seen it.
 
 ![The newmarchy panel](preview.png)
 
-- **Bar icon with a badge** counting what you haven't checked off yet in the
-  release you're running. It goes away when you've seen everything.
+- **Bar icon** that's a progress ring for the release you're running: it
+  fills as you check items off, and an accent dot shows while anything is
+  still unseen. Hover it for the count.
 - **Click** to open the checklist. It follows the release notes: for 4.5
   that's the 17 topics of the [omarchy.org post](https://omarchy.org/news/2026/11/omarchy-4-5/),
   in page order. The long lists under them (More features, Security, Fixes)
@@ -46,7 +47,7 @@ IPC, for a keybinding or a script:
 
 ```bash
 omarchy-shell yamz8.newmarchy toggle
-omarchy-shell yamz8.newmarchy unseen    # prints the badge count
+omarchy-shell yamz8.newmarchy unseen    # prints how many are unseen
 omarchy-shell yamz8.newmarchy refresh
 ```
 

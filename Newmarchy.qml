@@ -21,7 +21,6 @@ Panel {
 
   // A "new" box (U+F0394, Material Design Icons) from the configured Nerd
   // Font, so it stays monochrome and theme-tinted. No other widget uses it.
-  readonly property string newIcon: "󰎔"
   readonly property string notesIcon: "󰏌"
   readonly property string tryIcon: "󰐊"
   readonly property string expandIcon: "󰅀"
@@ -214,6 +213,25 @@ Panel {
 
   // Opens the feature and ticks the item. The panel closes first so a menu
   // or panel the command opens is not hidden behind it.
+  // The progress ring shared by the bar icon and the panel header: a faint
+  // track and an arc that fills clockwise from twelve o'clock.
+  function paintRing(ctx, cx, cy, outer, fraction, track, fill) {
+    const line = Math.max(2, Math.round(outer * 2 / 9));
+    const r = outer - line / 2;
+    ctx.lineWidth = line;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = track;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+    ctx.stroke();
+    if (fraction > 0) {
+      ctx.strokeStyle = fill;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * Math.min(1, fraction));
+      ctx.stroke();
+    }
+  }
+
   function tryItem(item) {
     var feature = item && root.notes ? F.featureFor(root.notes.tag, item.title) : null;
     if (!feature || !feature.try)
@@ -446,8 +464,47 @@ Panel {
 
     anchors.fill: parent
     bar: root.bar
-    text: root.newIcon
-    labelText: root.unseen > 0 ? Commons.I18n.formatNumber(root.unseen) : ""
+    // The panel's progress ring in the bar's own colour, with an accent dot
+    // while anything is unseen. The count is in the tooltip.
+    iconComponent: Component {
+      Canvas {
+        id: barRing
+
+        readonly property real fraction: root.counts.total > 0 ? root.counts.done / root.counts.total : 0
+        readonly property bool pending: root.unseen > 0
+        readonly property color fg: barButton.foreground
+        readonly property color dot: Commons.Color.accent
+
+        onFractionChanged: requestPaint()
+        onPendingChanged: requestPaint()
+        onFgChanged: requestPaint()
+        onDotChanged: requestPaint()
+        onWidthChanged: requestPaint()
+
+        onPaint: {
+          const ctx = getContext("2d");
+          const size = Math.min(width, height);
+          ctx.reset();
+          root.paintRing(ctx, width / 2, height / 2, size / 2, fraction, Qt.rgba(fg.r, fg.g, fg.b, 0.3), fg);
+          if (!pending)
+            return;
+          // The dot sits on the ring's top-right, with a clear gap cut around
+          // it so it reads on any bar background.
+          const dr = size * 0.17;
+          const dx = width - dr;
+          const dy = dr;
+          ctx.globalCompositeOperation = "destination-out";
+          ctx.beginPath();
+          ctx.arc(dx, dy, dr + size * 0.07, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.globalCompositeOperation = "source-over";
+          ctx.fillStyle = dot;
+          ctx.beginPath();
+          ctx.arc(dx, dy, dr, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+      }
+    }
     tooltipText: root.unseen > 0 ? strings.tn("bar.tooltipCount", root.unseen).arg(Commons.I18n.formatNumber(root.unseen)) : strings.t("bar.tooltip")
 
     onPressed: function (mouseButton) {
@@ -544,21 +601,8 @@ Panel {
 
                 onPaint: {
                   const ctx = getContext("2d")
-                  const line = Math.max(2, Math.round(width / 9))
-                  const r = (Math.min(width, height) - line) / 2
                   ctx.reset()
-                  ctx.lineWidth = line
-                  ctx.lineCap = "round"
-                  ctx.strokeStyle = track
-                  ctx.beginPath()
-                  ctx.arc(width / 2, height / 2, r, 0, 2 * Math.PI)
-                  ctx.stroke()
-                  if (fraction > 0) {
-                    ctx.strokeStyle = fill
-                    ctx.beginPath()
-                    ctx.arc(width / 2, height / 2, r, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * fraction)
-                    ctx.stroke()
-                  }
+                  owner.paintRing(ctx, width / 2, height / 2, Math.min(width, height) / 2, fraction, track, fill)
                 }
 
                 Text {
