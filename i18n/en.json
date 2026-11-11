@@ -20,5 +20,19 @@
   "hero.notesFrom": "Notes from %1",
   "hero.title": "Omarchy %1",
   "item.used": "Ticked because you've used it",
-  "hero.titleLoading": "What's new"
+  "hero.titleLoading": "What's new",
+  "try.console": "Drop the console",
+  "try.appearance": "Open Appearance",
+  "try.elsewhen": "Open Elsewhen",
+  "try.hype": "Open Hype",
+  "try.themes": "Open themes",
+  "try.background": "Pick a background",
+  "try.language": "Pick a language",
+  "try.testCard": "Send a test card",
+  "try.keybindings": "Show keybindings",
+  "try.workspaceLayouts": "Workspace layouts",
+  "try.cardTitle": "This is the new notification card",
+  "try.cardBody": "It follows your theme. Press Super + Comma to dismiss it.",
+  "try.keysTitle": "Try the new notification keys",
+  "try.keysBody": "Super + Comma acts on this card. Super + Ctrl + Comma takes the keyboard."
 }

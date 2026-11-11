@@ -220,7 +220,9 @@ Panel {
       return;
     root.setChecked([item.id], true);
     root.close();
-    Quickshell.execDetached(feature.try);
+    Quickshell.execDetached(F.tryArgv(feature, function (key) {
+      return strings.t(key);
+    }));
   }
 
   // Ticks what bin/newmarchy-detect has seen you use, at most once per item
@@ -872,7 +874,7 @@ Panel {
         Layout.alignment: Qt.AlignTop
         visible: itemRow.canTry
         iconText: root.tryIcon
-        tooltipText: String(itemRow.item.tryLabel || "")
+        tooltipText: itemRow.item.tryLabel ? strings.t(itemRow.item.tryLabel) : ""
         foreground: root.foreground
         fontFamily: root.fontFamily
         hasCursor: itemRow.hasCursor

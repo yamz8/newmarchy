@@ -6,112 +6,113 @@
 // both the omarchy.org post and the rc3 notes.
 //
 // Every command is a fixed argv run without a shell. Nothing from the network
-// ever reaches one.
+// ever reaches one. tryLabel is a key in i18n/, and an argument written as
+// { t: "key" } is replaced by that translated string when the command runs.
 
 var FEATURES = {
   "4.5.0": {
     // Headings of the 4.5 post on omarchy.org, which the checklist follows.
     "Floating workspaces with a dock": {
       try: ["omarchy-menu", "summon", "appearance.workspace-layout"],
-      tryLabel: "Workspace layouts",
+      tryLabel: "try.workspaceLayouts",
       signal: "floating"
     },
     "50 languages and 5 input methods": {
       try: ["omarchy-menu", "summon", "setup.language"],
-      tryLabel: "Pick a language",
+      tryLabel: "try.language",
       signal: "language"
     },
     "Five new default apps": {
       try: ["uwsm-app", "--", "hype.desktop"],
-      tryLabel: "Open Hype",
+      tryLabel: "try.hype",
       signal: "new-apps"
     },
     "Agent upgrades": {
       try: ["hyprctl", "dispatch", "hl.dsp.workspace.toggle_special(\"qconsole\")"],
-      tryLabel: "Drop the console",
+      tryLabel: "try.console",
       signal: "quake"
     },
     "Notifications, rebuilt": {
-      try: ["omarchy-notification-send", "-g", "󰎔", "This is the new notification card", "It follows your theme. Press Super + Comma to dismiss it."],
-      tryLabel: "Send a test card"
+      try: ["omarchy-notification-send", "-g", "󰎔", { t: "try.cardTitle" }, { t: "try.cardBody" }],
+      tryLabel: "try.testCard"
     },
     "Video backgrounds and theme intros": {
       try: ["omarchy-menu", "summon", "appearance.background"],
-      tryLabel: "Pick a background",
+      tryLabel: "try.background",
       signal: "video-background"
     },
     "Jade Horse joins the default themes": {
       try: ["omarchy-menu", "summon", "theme"],
-      tryLabel: "Open themes",
+      tryLabel: "try.themes",
       signal: "new-themes"
     },
     "Liftoff is the new default background": {
       try: ["omarchy-menu", "summon", "appearance.background"],
-      tryLabel: "Pick a background"
+      tryLabel: "try.background"
     },
     "Changed hotkeys": {
       try: ["omarchy-menu-keybindings"],
-      tryLabel: "Show keybindings"
+      tryLabel: "try.keybindings"
     },
 
     // Headings of the v4.5.0-rc3 notes, used when omarchy.org can't be read.
     "Some shortcuts moved": {
       try: ["omarchy-menu-keybindings"],
-      tryLabel: "Show keybindings"
+      tryLabel: "try.keybindings"
     },
     "Notification shortcuts changed": {
-      try: ["omarchy-notification-send", "-g", "󰎔", "Try the new notification keys", "Super + Comma acts on this card. Super + Ctrl + Comma takes the keyboard."],
-      tryLabel: "Send a test card"
+      try: ["omarchy-notification-send", "-g", "󰎔", { t: "try.keysTitle" }, { t: "try.keysBody" }],
+      tryLabel: "try.testCard"
     },
     "A few keys work differently": {
       try: ["omarchy-menu-keybindings"],
-      tryLabel: "Show keybindings"
+      tryLabel: "try.keybindings"
     },
     "Add Omarchy in 50 languages": {
       try: ["omarchy-menu", "summon", "setup.language"],
-      tryLabel: "Pick a language",
+      tryLabel: "try.language",
       signal: "language"
     },
     "Add floating workspaces with a dock": {
       try: ["omarchy-menu", "summon", "appearance.workspace-layout"],
-      tryLabel: "Workspace layouts",
+      tryLabel: "try.workspaceLayouts",
       signal: "floating"
     },
     "Add new, enhanced notifications": {
-      try: ["omarchy-notification-send", "-g", "󰎔", "This is the new notification card", "It follows your theme. Press Super + Comma to dismiss it."],
-      tryLabel: "Send a test card"
+      try: ["omarchy-notification-send", "-g", "󰎔", { t: "try.cardTitle" }, { t: "try.cardBody" }],
+      tryLabel: "try.testCard"
     },
     "Add an Appearance menu for how the desktop looks": {
       try: ["omarchy-menu", "summon", "appearance"],
-      tryLabel: "Open Appearance"
+      tryLabel: "try.appearance"
     },
     "Add video wallpapers and theme intros": {
       try: ["omarchy-menu", "summon", "appearance.background"],
-      tryLabel: "Pick a background",
+      tryLabel: "try.background",
       signal: "video-background"
     },
     "Speed up theme switching, menus, panels, and the bash prompt": {
       try: ["omarchy-menu", "summon", "theme"],
-      tryLabel: "Open themes"
+      tryLabel: "try.themes"
     },
     "Add Hype, Signed, Disktree, and Monologue as default apps": {
       try: ["uwsm-app", "--", "hype.desktop"],
-      tryLabel: "Open Hype",
+      tryLabel: "try.hype",
       signal: "new-apps"
     },
     "Add Elsewhen, a built-in world clock": {
       try: ["omarchy-shell", "shell", "toggle", "omarchy.elsewhen"],
-      tryLabel: "Open Elsewhen",
+      tryLabel: "try.elsewhen",
       signal: "elsewhen"
     },
     "Add a Quake-style terminal console": {
       try: ["hyprctl", "dispatch", "hl.dsp.workspace.toggle_special(\"qconsole\")"],
-      tryLabel: "Drop the console",
+      tryLabel: "try.console",
       signal: "quake"
     },
     "Add Starship and Jade Horse as default themes": {
       try: ["omarchy-menu", "summon", "theme"],
-      tryLabel: "Open themes",
+      tryLabel: "try.themes",
       signal: "new-themes"
     }
   }
@@ -130,6 +131,17 @@ function featureFor(tag, title) {
   var release = FEATURES[releaseKey(tag)]
   if (!release || !release.hasOwnProperty(title)) return null
   return release[title]
+}
+
+// The argv a feature's Try runs, with each { t: "key" } argument replaced by
+// translate(key), so a test card reads in the user's language.
+function tryArgv(feature, translate) {
+  var argv = [];
+  for (var i = 0; i < feature.try.length; i++) {
+    var arg = feature.try[i];
+    argv.push(typeof arg === "string" ? arg : String(translate(arg.t)));
+  }
+  return argv;
 }
 
 function parseSignals(raw) {

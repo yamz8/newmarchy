@@ -32,11 +32,17 @@ test("the omarchy.org checklist keeps its Try buttons and detection", () => {
   assert.deepEqual(ids.map((id) => byId[id]).sort(), ["Agent upgrades", "Floating workspaces with a dock"])
 })
 
-test("every feature command is a fixed argv of plain strings", () => {
+const strings = JSON.parse(readFileSync(new URL("../i18n/en.json", import.meta.url), "utf8"))
+
+test("every feature command is a fixed argv of plain or translated strings", () => {
   for (const [title, feature] of Object.entries(N.FEATURES["4.5.0"])) {
     assert.ok(Array.isArray(feature.try) && feature.try.length > 0, title)
-    for (const arg of feature.try) assert.equal(typeof arg, "string", title)
-    assert.ok(feature.tryLabel, title)
+    for (const arg of feature.try) {
+      if (typeof arg === "string") continue
+      assert.deepEqual(Object.keys(arg), ["t"], title)
+      assert.equal(typeof strings[arg.t], "string", `${title}: missing string ${arg.t}`)
+    }
+    assert.equal(typeof strings[feature.tryLabel], "string", `${title}: missing label ${feature.tryLabel}`)
     if (feature.signal) assert.ok(N.SIGNALS.includes(feature.signal), `${title}: unknown signal ${feature.signal}`)
   }
 })
@@ -88,4 +94,10 @@ test("the real 4.5.0 notes give 4 breaking changes and 16 highlights", () => {
     ["Breaking changes", 4],
     ["Highlights", 16]
   ])
+})
+
+test("tryArgv fills translated arguments and leaves the rest alone", () => {
+  const argv = plain(N.tryArgv(N.FEATURES["4.5.0"]["Notifications, rebuilt"], (key) => strings[key]))
+  assert.deepEqual(argv, ["omarchy-notification-send", "-g", "󰎔", strings["try.cardTitle"], strings["try.cardBody"]])
+  assert.deepEqual(plain(N.tryArgv(N.FEATURES["4.5.0"]["Agent upgrades"], () => "x")), plain(N.FEATURES["4.5.0"]["Agent upgrades"].try))
 })

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1 — 2026-11-11
+
+- The Try tooltips and the test notifications are translatable strings in
+  `i18n/en.json`, not English written into `Features.js`.
+- `preview.png` for the marketplace listing.
+- The README says what the plugin uses (all part of Omarchy 4) and runs the
+  whole test suite.
+
 ## 1.4.0 — 2026-11-11
 
 - The checklist follows the release's post on omarchy.org when the GitHub

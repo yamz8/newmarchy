@@ -3,6 +3,8 @@
 An Omarchy bar widget that turns each Omarchy release into a checklist, so
 after an update you can tell what's new and know you've actually seen it.
 
+![The newmarchy panel](preview.png)
+
 - **Bar icon with a badge** counting what you haven't checked off yet in the
   release you're running. It goes away when you've seen everything.
 - **Click** to open the checklist. It follows the release notes: for 4.5
@@ -24,6 +26,10 @@ after an update you can tell what's new and know you've actually seen it.
 ```bash
 omarchy plugin add https://github.com/yamz8/newmarchy.git --enable
 ```
+
+Needs nothing beyond a standard Omarchy 4 install. It uses `curl` and `bash`
+to fetch the notes, `jq` to detect what you've tried, and `hyprctl`,
+`uwsm-app` and the `omarchy-*` commands for the Try buttons.
 
 ## Keys
 
@@ -105,10 +111,11 @@ rm -rf ~/.local/state/newmarchy
 
 ```bash
 omarchy plugin validate .
-node --test tests/newmarchy.test.mjs
+node --test tests/*.mjs
 ```
 
-All parsing lives in `Newmarchy.js`, which the tests run under `node:vm`.
+All parsing lives in `Newmarchy.js` and the per-release knowledge in
+`Features.js`; the tests run both under `node:vm`.
 
 ## License
 
