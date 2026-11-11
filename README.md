@@ -71,7 +71,7 @@ the candidate's notes are used. The notes button's tooltip says where the
 list came from.
 
 The installed version is read locally with `omarchy-version`, once an hour
-and whenever the panel opens, so the badge follows an update without a shell
+and whenever the panel opens, so the ring follows an update without a shell
 restart.
 
 ## What it can tell you've tried
