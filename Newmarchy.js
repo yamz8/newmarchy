@@ -76,10 +76,17 @@ function plainInline(text) {
 // A changelog bullet ends in attribution: "by @dhh in #14433", or
 // "by @a, @b in omacom/omarchy-pkgs#1244". That belongs to the record, not
 // to the thing you are checking off.
+// The omarchy.org notes also credit commits: "in omacom/omarchy-iso@716bc15"
+// or "in 2550970". A bare hash needs a digit, so a word like "defaced"
+// is left alone.
+var REF = "(?:(?:[\\w.-]+\\/[\\w.-]+)?#\\d+|(?:[\\w.-]+\\/[\\w.-]+@)?(?=[0-9a-f]*\\d)[0-9a-f]{7,40})"
+var BY_ATTRIBUTION = new RegExp("\\s+by\\s+@[\\w-]+(?:\\s*(?:,|and)\\s*@[\\w-]+)*(?:\\s+in\\s+" + REF + "(?:\\s*(?:,|and)\\s*" + REF + ")*)?\\s*\\.?\\s*$", "i")
+var IN_ATTRIBUTION = new RegExp("\\s+in\\s+" + REF + "\\s*\\.?\\s*$", "i")
+
 function stripAttribution(text) {
   return String(text || "")
-    .replace(/\s+by\s+@[\w-]+(?:\s*(?:,|and)\s*@[\w-]+)*(?:\s+in\s+(?:[\w.-]+\/[\w.-]+)?#\d+(?:\s*(?:,|and)\s*(?:[\w.-]+\/[\w.-]+)?#\d+)*)?\s*\.?\s*$/i, "")
-    .replace(/\s+in\s+(?:[\w.-]+\/[\w.-]+)?#\d+\s*\.?\s*$/i, "")
+    .replace(BY_ATTRIBUTION, "")
+    .replace(IN_ATTRIBUTION, "")
     .trim()
 }
 
@@ -301,7 +308,138 @@ function notesFor(releases, tag) {
     published: release.published,
     url: release.url,
     sourceTag: source.tag,
+    sourceLabel: source.tag,
     sourceUrl: source.url,
+    sections: sections
+  }
+}
+
+// A stable release's GitHub text can be a paragraph and a link to its post
+// on omarchy.org ("Release notes: https://omarchy.org/news/2026/11/omarchy-4-5/"),
+// with the real notes on that page. Only that exact shape of URL is followed.
+var NEWS_URL = /https:\/\/omarchy\.org\/news\/\d{4}\/\d{2}\/[a-z0-9][a-z0-9-]{0,80}\/?(?=[\s)>\]"'.,;]|$)/
+var MAX_PAGE = 2 * 1024 * 1024
+
+function newsUrlFor(release) {
+  if (!release || release.prerelease) return ""
+  var match = NEWS_URL.exec(release.body)
+  if (!match) return ""
+  return match[0].replace(/\/?$/, "/")
+}
+
+var ENTITIES = {
+  amp: "&", lt: "<", gt: ">", quot: "\"", apos: "'", nbsp: " ",
+  rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", hellip: "…", mdash: "—", ndash: "–",
+  middot: "·", deg: "°", times: "×", rarr: "→", larr: "←", copy: "©"
+}
+
+function decodeEntities(text) {
+  return String(text || "").replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,8});/gi, function (whole, name) {
+    if (name.charAt(0) === "#") {
+      var code = name.charAt(1) === "x" || name.charAt(1) === "X" ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10)
+      return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : ""
+    }
+    var key = name.toLowerCase()
+    return ENTITIES.hasOwnProperty(key) ? ENTITIES[key] : whole
+  })
+}
+
+// An HTML fragment as one line of plain text. Tags go first, then entities
+// are decoded, so a decoded "<" can never become markup. The result is
+// still displayed with Text.PlainText.
+function htmlText(fragment) {
+  return decodeEntities(String(fragment || "").replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim()
+}
+
+// The <article> of an omarchy.org news post -> the same shape parseNotes
+// returns. The page is a run of <h2> topics. A topic written as prose
+// (paragraphs, maybe a list or two) is one checklist item, its paragraphs
+// the detail. A topic that is only a list ("More features", "Security",
+// "Fixes") is a section of its own, one item per bullet. Topics stay in
+// page order under one key section; the list sections follow, not counted.
+function parseNewsPage(html) {
+  var text = String(html || "")
+  if (text.length > MAX_PAGE) text = text.slice(0, MAX_PAGE)
+  var start = text.search(/<article\b/i)
+  var end = text.search(/<\/article\s*>/i)
+  if (start < 0 || end < start) return []
+  text = text.slice(start, end)
+
+  var blocks = []
+  var block = null
+  var tokens = /<(h2|p|li)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi
+  var match
+  while ((match = tokens.exec(text)) !== null) {
+    var tag = match[1].toLowerCase()
+    if (tag === "h2") {
+      var heading = clip(htmlText(match[2]), MAX_TITLE)
+      block = heading === "" ? null : { title: heading, prose: 0, lines: [], bullets: [] }
+      if (block) blocks.push(block)
+      continue
+    }
+    if (!block) continue
+    if (tag === "p") {
+      var para = htmlText(match[2])
+      if (para !== "") {
+        block.prose++
+        block.lines.push(para)
+      }
+      continue
+    }
+    // A bullet may hold paragraphs of its own: the first is the bullet,
+    // the rest its detail.
+    var parts = []
+    var inner = /<p\b[^>]*>([\s\S]*?)<\/p\s*>/gi
+    var p
+    while ((p = inner.exec(match[2])) !== null) {
+      var part = htmlText(p[1])
+      if (part !== "") parts.push(part)
+    }
+    if (parts.length === 0) parts.push(htmlText(match[2]))
+    var bullet = stripAttribution(parts[0])
+    if (bullet === "") continue
+    block.bullets.push({ title: bullet, detail: parts.slice(1).join("\n") })
+    block.lines.push("• " + bullet)
+  }
+
+  var topics = { title: "Highlights", key: true, breaking: false, items: [] }
+  var lists = []
+  var itemCount = 0
+  for (var i = 0; i < blocks.length && itemCount < MAX_ITEMS; i++) {
+    var b = blocks[i]
+    if (b.prose === 0 && b.bullets.length > 0) {
+      if (lists.length >= MAX_SECTIONS - 1) continue
+      var list = { title: b.title, key: false, breaking: false, items: [] }
+      for (var j = 0; j < b.bullets.length && itemCount < MAX_ITEMS; j++) {
+        var title = clip(b.bullets[j].title, MAX_TITLE)
+        list.items.push({ id: itemId(b.title, title), title: title, detail: clip(b.bullets[j].detail, MAX_DETAIL) })
+        itemCount++
+      }
+      lists.push(list)
+      continue
+    }
+    if (b.prose === 0) continue
+    // Paragraphs and bullets in page order, so a topic such as "Changed
+    // hotkeys" keeps each list under the line that introduces it.
+    topics.items.push({ id: itemId(topics.title, b.title), title: b.title, detail: clip(b.lines.join("\n"), MAX_DETAIL) })
+    itemCount++
+  }
+  return (topics.items.length > 0 ? [topics] : []).concat(lists)
+}
+
+// The notes for a release, with the news post's sections in place of
+// whatever GitHub had. Without anything usable from the page, the notes
+// are returned as they were.
+function withNews(notes, sections, url) {
+  if (!notes || !sections || countItems(sections) === 0) return notes
+  return {
+    tag: notes.tag,
+    name: notes.name,
+    published: notes.published,
+    url: notes.url,
+    sourceTag: notes.tag,
+    sourceLabel: "omarchy.org",
+    sourceUrl: url,
     sections: sections
   }
 }
@@ -406,6 +544,24 @@ function checklist(notes) {
     }
   }
   return items
+}
+
+// The sections the checklist leaves out, in the order the notes give them,
+// for the read-only part under it: [{ title, items: [{ id, title }] }].
+function moreSections(notes) {
+  var more = []
+  if (!notes) return more
+  var hasKey = false
+  for (var k = 0; k < notes.sections.length; k++) if (notes.sections[k].key) hasKey = true
+  if (!hasKey) return more
+  for (var i = 0; i < notes.sections.length; i++) {
+    var section = notes.sections[i]
+    if (section.key) continue
+    var items = []
+    for (var j = 0; j < section.items.length; j++) items.push({ id: section.items[j].id, title: section.items[j].title })
+    more.push({ title: section.title, items: items })
+  }
+  return more
 }
 
 function progress(notes, seen) {

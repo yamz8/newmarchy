@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.4.0 — 2026-11-11
+
+- The checklist follows the release's post on omarchy.org when the GitHub
+  release links to one, as stable v4.5.0 does: the post's 17 topics, in page
+  order. Before, it used the v4.5.0-rc3 notes, which miss what changed
+  after rc3 (Apple Silicon, captive portals, Microsoft 365, Superwhisper,
+  agent upgrades, Liftoff).
+- More features, Security, and Fixes sit collapsed under the checklist,
+  read-only and not counted.
+- The notes button opens the page the list came from.
+- Try buttons and detection are mapped to the post's headings.
+- Credits that name a commit ("in omacom/omarchy-iso@716bc15") are stripped.
+- Ticks made against the rc3 titles don't carry over; detection ticks
+  again what it can see you've used.
+
 ## 1.3.1 — 2026-11-09
 
 - Cleaner header: the title is the release ("Omarchy 4.5.0"), the meta

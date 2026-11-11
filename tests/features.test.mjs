@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs"
 import test from "node:test"
 import vm from "node:vm"
 
-const context = vm.createContext({ Array, Error, JSON, Math, Number, String, encodeURIComponent })
+const context = vm.createContext({ Array, Error, JSON, Math, Number, String, encodeURIComponent, parseInt })
 vm.runInContext(readFileSync(new URL("../Newmarchy.js", import.meta.url), "utf8"), context)
 vm.runInContext(readFileSync(new URL("../Features.js", import.meta.url), "utf8"), context)
 const N = context
@@ -14,8 +14,22 @@ const body = readFileSync(new URL("./fixtures/v4.5.0-rc3.md", import.meta.url), 
 const notes = { tag: "v4.5.0", sections: N.parseNotes(body) }
 const titles = notes.sections.flatMap((section) => section.items.map((item) => item.title))
 
-test("every mapped feature names a real item in the 4.5.0 notes", () => {
-  for (const title of Object.keys(N.FEATURES["4.5.0"])) assert.ok(titles.includes(title), `no item titled "${title}"`)
+// The 4.5 post on omarchy.org, which the stable release links to.
+const page = readFileSync(new URL("./fixtures/omarchy-4-5.html", import.meta.url), "utf8")
+const news = { tag: "v4.5.0", sections: N.parseNewsPage(page) }
+const newsTitles = news.sections.flatMap((section) => section.items.map((item) => item.title))
+
+test("every mapped feature names a real item in the omarchy.org post or the rc3 notes", () => {
+  for (const title of Object.keys(N.FEATURES["4.5.0"]))
+    assert.ok(titles.includes(title) || newsTitles.includes(title), `no item titled "${title}"`)
+})
+
+test("the omarchy.org checklist keeps its Try buttons and detection", () => {
+  const mapped = newsTitles.filter((title) => N.featureFor("v4.5.0", title))
+  assert.equal(mapped.length, 9)
+  const ids = plain(N.detectedIds(news, ["quake", "floating"]))
+  const byId = Object.fromEntries(news.sections.flatMap((s) => s.items.map((i) => [i.id, i.title])))
+  assert.deepEqual(ids.map((id) => byId[id]).sort(), ["Agent upgrades", "Floating workspaces with a dock"])
 })
 
 test("every feature command is a fixed argv of plain strings", () => {

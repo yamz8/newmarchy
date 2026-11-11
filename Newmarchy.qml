@@ -24,6 +24,8 @@ Panel {
   readonly property string newIcon: "󰎔"
   readonly property string notesIcon: "󰏌"
   readonly property string tryIcon: "󰐊"
+  readonly property string expandIcon: "󰅀"
+  readonly property string collapseIcon: "󰅃"
 
   // Thirty releases of notes are about 300 kB. 4 MiB is headroom that still
   // stops a hostile or hijacked endpoint from growing the shell without bound.
@@ -58,6 +60,15 @@ Panel {
   property var groups: []
   property bool returnPending: false
   property var detectedSignals: []
+  // Sections the checklist leaves out (More features, Security, Fixes),
+  // shown collapsed and read-only under it, and which of them are open.
+  property var more: []
+  property var moreOpen: ({})
+  // The release's post on omarchy.org, when its GitHub text links to one,
+  // and that page's sections once read.
+  property string newsUrl: ""
+  property string newsFetchedUrl: ""
+  property var newsSections: null
 
   readonly property var counts: N.progress(root.notes, root.seen)
   readonly property int unseen: root.counts.total - root.counts.done
@@ -68,10 +79,23 @@ Panel {
   }
 
   onTagChanged: {
-    root.notes = root.tag !== "" ? N.notesFor(root.releases, root.tag) : null;
     root.expanded = ({});
+    root.moreOpen = ({});
+    root.rebuildNotes();
+  }
+
+  // GitHub's notes for the release, or, when its text links to a post on
+  // omarchy.org that has been read, that post's. The post is fetched once
+  // per URL; until it arrives, or if it can't be read, GitHub's notes stay.
+  function rebuildNotes() {
+    var base = root.tag !== "" ? N.notesFor(root.releases, root.tag) : null;
+    root.newsUrl = root.tag !== "" ? N.newsUrlFor(N.findRelease(root.releases, root.tag)) : "";
+    var useNews = root.newsUrl !== "" && root.newsUrl === root.newsFetchedUrl && root.newsSections;
+    root.notes = useNews ? N.withNews(base, root.newsSections, root.newsUrl) : base;
     root.refreshItems();
     root.applyDetection();
+    if (root.newsUrl !== "" && root.newsUrl !== root.newsFetchedUrl)
+      root.fetchNews(root.newsUrl);
   }
   onSeenChanged: refreshItems()
 
@@ -96,6 +120,10 @@ Panel {
     }
     root.items = list;
     root.groups = groups;
+    var more = N.moreSections(root.notes);
+    for (var m = 0; m < more.length; m++)
+      more[m].open = !!root.moreOpen[more[m].title];
+    root.more = more;
     root.cursor = Math.max(0, Math.min(root.cursor, list.length - 1));
   }
 
@@ -118,6 +146,15 @@ Panel {
     root.setChecked(root.items.map(function (item) {
       return item.id;
     }), root.unseen > 0);
+  }
+
+  function toggleMore(title) {
+    var next = {};
+    for (var key in root.moreOpen)
+      next[key] = root.moreOpen[key];
+    next[title] = !next[title];
+    root.moreOpen = next;
+    root.refreshItems();
   }
 
   function toggleExpanded(item) {
@@ -204,7 +241,7 @@ Panel {
   }
 
   function openNotes() {
-    Quickshell.execDetached(["omarchy-launch-browser", root.notes ? root.notes.url : N.RELEASES_PAGE]);
+    Quickshell.execDetached(["omarchy-launch-browser", root.notes ? root.notes.sourceUrl : N.RELEASES_PAGE]);
     root.close();
   }
 
@@ -235,9 +272,28 @@ Panel {
     }
     root.fetchedAt = Date.now();
     // A re-fetch can bring new notes for the same tag.
-    root.notes = root.tag !== "" ? N.notesFor(root.releases, root.tag) : null;
-    root.refreshItems();
-    root.applyDetection();
+    root.rebuildNotes();
+  }
+
+  // The same caps as the GitHub fetch. The URL has already matched
+  // N.NEWS_URL, and goes in as a positional argument.
+  function fetchNews(url) {
+    if (newsProcess.running)
+      return;
+    root.newsFetchedUrl = url;
+    root.newsSections = null;
+    newsProcess.command = ["bash", "-c", "set -o pipefail; curl -fsSL --proto =https --max-time 15 --connect-timeout 5 " + "--max-filesize " + root.maxResponseBytes + " --user-agent newmarchy/1.0 -- \"$1\" | head -c " + root.maxResponseBytes, "newmarchy", url];
+    newsProcess.running = true;
+  }
+
+  function applyNews(raw) {
+    if (raw.length >= root.maxResponseBytes)
+      return;
+    var sections = N.parseNewsPage(raw);
+    if (N.countItems(sections) === 0)
+      return;
+    root.newsSections = sections;
+    root.rebuildNotes();
   }
 
   function networkError(exitCode) {
@@ -355,6 +411,19 @@ Panel {
         root.fetching = false;
         root.errorText = root.networkError(exitCode);
       }
+    }
+  }
+
+  // A failed read leaves GitHub's notes in place until the shell restarts.
+  Process {
+    id: newsProcess
+
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.applyNews(String(text || ""))
+    }
+    stderr: StdioCollector {
+      waitForEnd: true
     }
   }
 
@@ -540,7 +609,7 @@ Panel {
 
                 PanelToolTip {
                   visible: notesMouse.containsMouse
-                  text: notesButton.owner.notes && notesButton.owner.notes.sourceTag !== notesButton.owner.notes.tag ? strings.t("hero.notesFrom").arg(notesButton.owner.notes.sourceTag) : strings.t("hero.notes")
+                  text: notesButton.owner.notes && notesButton.owner.notes.sourceLabel !== notesButton.owner.notes.tag ? strings.t("hero.notesFrom").arg(notesButton.owner.notes.sourceLabel) : strings.t("hero.notes")
                 }
               }
             }
@@ -596,6 +665,103 @@ Panel {
 
                     width: group.width
                     item: modelData
+                  }
+                }
+              }
+            }
+          }
+
+          // The rest of the release, in the order the notes give it,
+          // collapsed. Read-only: nothing here counts toward the badge.
+          Repeater {
+            model: root.more
+
+            Column {
+              id: moreGroup
+
+              required property var modelData
+
+              width: column.width
+              spacing: Style.space(8)
+
+              PanelSeparator {
+                width: parent.width
+                foreground: root.foreground
+              }
+
+              Item {
+                width: parent.width
+                implicitHeight: moreHeader.implicitHeight
+
+                PanelSectionHeader {
+                  id: moreHeader
+
+                  anchors.left: parent.left
+                  anchors.right: moreChevron.left
+                  text: String(moreGroup.modelData.title).toUpperCase() + " · " + Commons.I18n.formatNumber(moreGroup.modelData.items.length)
+                  foreground: root.foreground
+                  fontFamily: root.fontFamily
+                }
+
+                Text {
+                  id: moreChevron
+
+                  anchors.right: parent.right
+                  anchors.rightMargin: Style.space(10)
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: moreGroup.modelData.open ? root.collapseIcon : root.expandIcon
+                  textFormat: Text.PlainText
+                  color: moreMouse.containsMouse ? root.foreground : root.dim
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                }
+
+                MouseArea {
+                  id: moreMouse
+
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.toggleMore(moreGroup.modelData.title)
+                }
+              }
+
+              Column {
+                visible: moreGroup.modelData.open
+                width: parent.width
+                spacing: Style.space(4)
+
+                Repeater {
+                  model: moreGroup.modelData.open ? moreGroup.modelData.items : []
+
+                  // A hanging indent, so a wrapped line lines up with the
+                  // text and not with the dot.
+                  Row {
+                    required property var modelData
+
+                    x: Style.space(10)
+                    width: moreGroup.width - Style.space(20)
+                    spacing: Style.space(6)
+
+                    Text {
+                      id: moreDot
+
+                      text: "·"
+                      textFormat: Text.PlainText
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                    }
+
+                    Text {
+                      width: parent.width - moreDot.width - parent.spacing
+                      text: parent.modelData.title
+                      textFormat: Text.PlainText
+                      color: root.dim
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                      wrapMode: Text.WordWrap
+                    }
                   }
                 }
               }

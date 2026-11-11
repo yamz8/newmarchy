@@ -4,7 +4,7 @@ import test from "node:test"
 import vm from "node:vm"
 
 const source = readFileSync(new URL("../Newmarchy.js", import.meta.url), "utf8")
-const context = vm.createContext({ Array, Error, JSON, Math, Number, String, encodeURIComponent })
+const context = vm.createContext({ Array, Error, JSON, Math, Number, String, encodeURIComponent, parseInt })
 vm.runInContext(source, context)
 const N = context
 
@@ -266,4 +266,77 @@ test("progress counts what the checklist shows", () => {
   const seen = N.setSeen({}, "v4.5.0", [notes.sections[0].items[0].id], true)
   assert.deepEqual(plain(N.progress(notes, seen)), { done: 1, total: 4 })
   assert.deepEqual(plain(N.progress(null, {})), { done: 0, total: 0 })
+})
+
+// The omarchy.org post that the stable v4.5.0 release links to.
+const page = readFileSync(new URL("./fixtures/omarchy-4-5.html", import.meta.url), "utf8")
+
+test("a stable release's omarchy.org link is found, and only that shape of link", () => {
+  const stable = { tag: "v4.5.0", prerelease: false, body: finalBody }
+  assert.equal(N.newsUrlFor(stable), "https://omarchy.org/news/2026/11/omarchy-4-5/")
+  assert.equal(N.newsUrlFor({ ...stable, prerelease: true }), "")
+  assert.equal(N.newsUrlFor({ ...stable, body: "See https://omarchy.org.evil.invalid/news/2026/11/x/" }), "")
+  assert.equal(N.newsUrlFor({ ...stable, body: "See https://omarchy.org/news/../../etc/" }), "")
+  assert.equal(N.newsUrlFor({ ...stable, body: "Notes: https://omarchy.org/news/2026/11/omarchy-4-5" }), "https://omarchy.org/news/2026/11/omarchy-4-5/")
+})
+
+test("the omarchy.org post follows the page: 17 topics, then its lists", () => {
+  const sections = plain(N.parseNewsPage(page))
+  assert.deepEqual(sections.map((s) => [s.title, s.key, s.items.length]), [
+    ["Highlights", true, 17],
+    ["More features", false, 29],
+    ["Security", false, 13],
+    ["Fixes", false, 215]
+  ])
+  const topics = sections[0].items.map((i) => i.title)
+  assert.equal(topics[0], "Floating workspaces with a dock")
+  assert.equal(topics[16], "Changed hotkeys")
+  assert.ok(topics.includes("Omarchy on Apple Silicon"))
+})
+
+test("a topic's lists stay under the line that introduces them", () => {
+  const hotkeys = plain(N.parseNewsPage(page))[0].items.find((i) => i.title === "Changed hotkeys")
+  const lines = hotkeys.detail.split("\n")
+  assert.equal(lines[0], "Some shortcuts moved:")
+  assert.match(lines[1], /^• Calculator: Super \+ Ctrl \+ Q is now Super \+ Shift \+ Q\.$/)
+  assert.ok(lines.indexOf("Notification shortcuts changed:") > 1)
+})
+
+test("list items lose their credits, commits included", () => {
+  for (const section of plain(N.parseNewsPage(page)).slice(1))
+    for (const item of section.items) assert.doesNotMatch(item.title, / by @|#\d|@[0-9a-f]{7}/, item.title)
+  assert.equal(N.stripAttribution("Fix boot entries by @emirb in omacom/omarchy-iso@716bc15"), "Fix boot entries")
+  assert.equal(N.stripAttribution("Update translations by @ryanrhughes in 2550970"), "Update translations")
+  assert.equal(N.stripAttribution("Fix the logo in defaced"), "Fix the logo in defaced")
+})
+
+test("page text is plain: tags stripped before entities are decoded", () => {
+  const html = '<article><h2>A &lt;b&gt;bold&lt;/b&gt; &amp; <i>new</i> thing</h2><p>It&rsquo;s here &#x2014; <img src="x"> now.</p></article>'
+  const [section] = plain(N.parseNewsPage(html))
+  assert.equal(section.items[0].title, "A <b>bold</b> & new thing")
+  assert.equal(section.items[0].detail, "It’s here — now.")
+})
+
+test("a page without an article gives nothing, and the notes stay as they were", () => {
+  assert.deepEqual(plain(N.parseNewsPage("<html><h2>X</h2><p>y</p></html>")), [])
+  const notes = N.notesFor(N.parseReleases(feed), "v4.5.0")
+  assert.equal(N.withNews(notes, [], "https://omarchy.org/news/2026/11/x/"), notes)
+})
+
+test("with the post read, the checklist and the link follow it", () => {
+  const notes = N.withNews(N.notesFor(N.parseReleases(feed), "v4.5.0"), N.parseNewsPage(page), "https://omarchy.org/news/2026/11/omarchy-4-5/")
+  assert.equal(notes.sourceUrl, "https://omarchy.org/news/2026/11/omarchy-4-5/")
+  assert.equal(notes.sourceLabel, "omarchy.org")
+  assert.deepEqual(plain(N.progress(notes, {})), { done: 0, total: 17 })
+  assert.deepEqual(plain(N.moreSections(notes)).map((s) => [s.title, s.items.length]), [
+    ["More features", 29],
+    ["Security", 13],
+    ["Fixes", 215]
+  ])
+})
+
+test("without the post, the link is to the notes the list came from", () => {
+  const notes = N.notesFor(N.parseReleases(feed), "v4.5.0")
+  assert.equal(notes.sourceUrl, "https://github.com/omacom/omarchy/releases/tag/v4.5.0-rc3")
+  assert.equal(notes.sourceLabel, "v4.5.0-rc3")
 })

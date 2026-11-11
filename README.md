@@ -5,9 +5,10 @@ after an update you can tell what's new and know you've actually seen it.
 
 - **Bar icon with a badge** counting what you haven't checked off yet in the
   release you're running. It goes away when you've seen everything.
-- **Click** to open the checklist: the release's breaking changes and
-  highlights, each under its own heading. The long Features / Improvements / Fixes
-  lists stay on the release page, one click away.
+- **Click** to open the checklist. It follows the release notes: for 4.5
+  that's the 17 topics of the [omarchy.org post](https://omarchy.org/news/2026/11/omarchy-4-5/),
+  in page order. The long lists under them (More features, Security, Fixes)
+  sit collapsed underneath, readable but not counted.
 - **Click an item** to read its full text, and **tick its box** once you've
   seen it.
 - **Try it**: the ▶ button on a row opens the feature when there is
@@ -15,7 +16,8 @@ after an update you can tell what's new and know you've actually seen it.
   Quake console, the theme menu, a test notification). Pressing it opens the
   feature and ticks the item.
 - **Ticks itself** when it can see you've used something new (see below).
-- **Right-click** the icon to open the release on GitHub.
+- **Right-click** the icon, or press the notes button, to open the notes the
+  checklist came from.
 
 ## Install
 
@@ -46,14 +48,20 @@ omarchy-shell yamz8.newmarchy refresh
 
 The [GitHub releases](https://github.com/omacom/omarchy/releases) of
 `omacom/omarchy`, fetched over HTTPS when the shell starts and when the panel
-opens (at most once every ten minutes). There is no other network use and no
-background polling. The response is capped at 4 MiB and every title and
-description is bounded and rendered as plain text.
+opens (at most once every ten minutes). There is no background polling. Each
+response is capped at 4 MiB and every title and description is bounded and
+rendered as plain text.
 
-Some final releases, such as v4.5.0, carry only a short summary and a link,
-with the full notes on the last release candidate. When a release candidate
-has more to check off than its final release, newmarchy uses the candidate's
-notes; the Release notes button's tooltip says which.
+A stable release such as v4.5.0 is a short summary on GitHub with a link to
+its post on omarchy.org. When the release links to
+`https://omarchy.org/news/<year>/<month>/<slug>/`, newmarchy reads that page
+once and builds the checklist from it: each `<h2>` topic written as prose is
+an item, and a topic that is only a list is a collapsed section.
+
+Without such a link, or if the page can't be read, it falls back to GitHub.
+When a final release has less to check off than its last release candidate,
+the candidate's notes are used. The notes button's tooltip says where the
+list came from.
 
 The installed version is read locally with `omarchy-version`, once an hour
 and whenever the panel opens, so the badge follows an update without a shell
@@ -66,20 +74,20 @@ shell starts, when the panel opens, and once an hour. For 4.5.0 it ticks:
 
 | Item | Signal |
 | --- | --- |
-| Omarchy in 50 languages | `omarchy-language` is not `en` |
+| 50 languages and 5 input methods | `omarchy-language` is not `en` |
 | Floating workspaces with a dock | a workspace layout file says `floating` |
-| Quake-style terminal console | the `special:qconsole` workspace exists |
-| Elsewhen world clock | Elsewhen has cities of your own in `shell.json` |
-| Video wallpapers | the current background is a video file |
-| Hype, Signed, Disktree, Monologue | one of them has a config or state directory |
-| Starship and Jade Horse themes | one of them is the current theme |
+| Agent upgrades | the `special:qconsole` workspace (the Quake console) exists |
+| Five new default apps | Hype, Signed, Disktree, or Monologue has a config or state directory |
+| Video backgrounds and theme intros | the current background is a video file |
+| Jade Horse joins the default themes | Jade Horse or Starship is the current theme |
 
 Each item is ticked by detection at most once. If you untick it, it stays
 unticked. Items ticked this way say so under their title.
 
 The try commands and signals are written by hand per release in
-`Features.js`; `tests/features.test.mjs` checks every one against the real
-release notes in `tests/fixtures/`.
+`Features.js`, keyed by item title, for both the omarchy.org post and the
+rc3 notes; `tests/features.test.mjs` checks every one against copies of
+both in `tests/fixtures/`.
 
 ## State
 

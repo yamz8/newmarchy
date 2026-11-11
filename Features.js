@@ -2,13 +2,59 @@
 // that opens the feature, and a signal from bin/newmarchy-detect that shows
 // the feature has been used. Release notes are prose, so none of this can be
 // derived from them; it is keyed by release and by the item's title as
-// parsed, and tests/features.test.mjs fails if a title stops matching.
+// parsed, and tests/features.test.mjs fails if a title stops matching
+// both the omarchy.org post and the rc3 notes.
 //
 // Every command is a fixed argv run without a shell. Nothing from the network
 // ever reaches one.
 
 var FEATURES = {
   "4.5.0": {
+    // Headings of the 4.5 post on omarchy.org, which the checklist follows.
+    "Floating workspaces with a dock": {
+      try: ["omarchy-menu", "summon", "appearance.workspace-layout"],
+      tryLabel: "Workspace layouts",
+      signal: "floating"
+    },
+    "50 languages and 5 input methods": {
+      try: ["omarchy-menu", "summon", "setup.language"],
+      tryLabel: "Pick a language",
+      signal: "language"
+    },
+    "Five new default apps": {
+      try: ["uwsm-app", "--", "hype.desktop"],
+      tryLabel: "Open Hype",
+      signal: "new-apps"
+    },
+    "Agent upgrades": {
+      try: ["hyprctl", "dispatch", "hl.dsp.workspace.toggle_special(\"qconsole\")"],
+      tryLabel: "Drop the console",
+      signal: "quake"
+    },
+    "Notifications, rebuilt": {
+      try: ["omarchy-notification-send", "-g", "󰎔", "This is the new notification card", "It follows your theme. Press Super + Comma to dismiss it."],
+      tryLabel: "Send a test card"
+    },
+    "Video backgrounds and theme intros": {
+      try: ["omarchy-menu", "summon", "appearance.background"],
+      tryLabel: "Pick a background",
+      signal: "video-background"
+    },
+    "Jade Horse joins the default themes": {
+      try: ["omarchy-menu", "summon", "theme"],
+      tryLabel: "Open themes",
+      signal: "new-themes"
+    },
+    "Liftoff is the new default background": {
+      try: ["omarchy-menu", "summon", "appearance.background"],
+      tryLabel: "Pick a background"
+    },
+    "Changed hotkeys": {
+      try: ["omarchy-menu-keybindings"],
+      tryLabel: "Show keybindings"
+    },
+
+    // Headings of the v4.5.0-rc3 notes, used when omarchy.org can't be read.
     "Some shortcuts moved": {
       try: ["omarchy-menu-keybindings"],
       tryLabel: "Show keybindings"
