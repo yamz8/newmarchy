@@ -16,8 +16,9 @@ after an update you can tell what's new and know you've actually seen it.
   seen it.
 - **Try it**: the ▶ button on a row opens the feature when there is
   something to open (the language picker, workspace layouts, Elsewhen, the
-  Quake console, the theme menu, a test notification). Pressing it opens the
-  feature and ticks the item.
+  Quake console, the background picker, a test notification), and ticks the
+  item. On "Jade Horse joins the default themes" it switches your theme to
+  Jade Horse; the theme menu (Super + Ctrl + Shift + Space) switches back.
 - **Ticks itself** when it can see you've used something new (see below).
 - **Right-click** the icon, or press the notes button, to open the notes the
   checklist came from.

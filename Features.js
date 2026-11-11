@@ -42,8 +42,8 @@ var FEATURES = {
       signal: "video-background"
     },
     "Jade Horse joins the default themes": {
-      try: ["omarchy-menu", "summon", "theme"],
-      tryLabel: "try.themes",
+      try: ["omarchy-theme-set", "Jade Horse"],
+      tryLabel: "try.jadeHorse",
       signal: "new-themes"
     },
     "Liftoff is the new default background": {

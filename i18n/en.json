@@ -34,5 +34,6 @@
   "try.cardTitle": "This is the new notification card",
   "try.cardBody": "It follows your theme. Press Super + Comma to dismiss it.",
   "try.keysTitle": "Try the new notification keys",
-  "try.keysBody": "Super + Comma acts on this card. Super + Ctrl + Comma takes the keyboard."
+  "try.keysBody": "Super + Comma acts on this card. Super + Ctrl + Comma takes the keyboard.",
+  "try.jadeHorse": "Switch to Jade Horse"
 }

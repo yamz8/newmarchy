@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.1 — 2026-11-11
+
+- ▶ on "Jade Horse joins the default themes" switches to Jade Horse instead
+  of opening the theme picker.
+
 ## 1.5.0 — 2026-11-11
 
 - The bar icon is the panel's progress ring, in the bar's colour, with an
