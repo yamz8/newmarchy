@@ -5,9 +5,9 @@ after an update you can tell what's new and know you've actually seen it.
 
 ![The newmarchy panel](preview.png)
 
-- **Bar icon** that's a progress ring for the release you're running: it
-  fills as you check items off, and an accent dot shows while anything is
-  still unseen. Hover it for the count.
+- **Bar icon** for the release you're running: a circle that fills as you
+  check items off, from empty to a full disc once you've seen everything.
+  Hover it for the count.
 - **Click** to open the checklist. It follows the release notes: for 4.5
   that's the topics of the [omarchy.org post](https://omarchy.org/news/2026/11/omarchy-4-5/),
   in page order, with each of the new default apps on a line of its own. The long lists under them (More features, Security, Fixes)
@@ -74,7 +74,7 @@ the candidate's notes are used. The notes button's tooltip says where the
 list came from.
 
 The installed version is read locally with `omarchy-version`, once an hour
-and whenever the panel opens, so the ring follows an update without a shell
+and whenever the panel opens, so the icon follows an update without a shell
 restart.
 
 ## What it can tell you've tried

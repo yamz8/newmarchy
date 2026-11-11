@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.6.1 — 2026-11-12
+
+- The bar icon is a font glyph, a circle that fills in eighths, so it takes
+  the bar's own size, weight, and centring like every other icon. The drawn
+  ring and its accent dot are gone; the panel header keeps its ring.
+
 ## 1.6.0 — 2026-11-11
 
 - "Five new default apps" is split into its apps, Hype, Signed, Disktree,

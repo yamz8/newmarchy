@@ -21,6 +21,15 @@ Panel {
 
   // A "new" box (U+F0394, Material Design Icons) from the configured Nerd
   // Font, so it stays monochrome and theme-tinted. No other widget uses it.
+  // Circle outline, then eighths of a pie, then a full disc.
+  readonly property var progressGlyphs: ["󰝦", "󰪞", "󰪟", "󰪠", "󰪡", "󰪢", "󰪣", "󰪤", "󰪥"]
+  readonly property string progressGlyph: {
+    const total = root.counts.total;
+    const step = total > 0 ? Math.round(8 * root.counts.done / total) : 0;
+    // Never full until everything is seen, never empty once something is.
+    const shown = root.unseen > 0 ? Math.max(root.counts.done > 0 ? 1 : 0, Math.min(7, step)) : (total > 0 ? 8 : 0);
+    return root.progressGlyphs[shown];
+  }
   readonly property string notesIcon: "󰏌"
   readonly property string tryIcon: "󰐊"
   readonly property string expandIcon: "󰅀"
@@ -213,7 +222,7 @@ Panel {
 
   // Opens the feature and ticks the item. The panel closes first so a menu
   // or panel the command opens is not hidden behind it.
-  // The progress ring shared by the bar icon and the panel header: a faint
+  // The panel header's progress ring: a faint
   // track and an arc that fills clockwise from twelve o'clock.
   function paintRing(ctx, cx, cy, outer, fraction, track, fill) {
     const line = Math.max(2, Math.round(outer * 2 / 9));
@@ -465,47 +474,9 @@ Panel {
 
     anchors.fill: parent
     bar: root.bar
-    // The panel's progress ring in the bar's own colour, with an accent dot
-    // while anything is unseen. The count is in the tooltip.
-    iconComponent: Component {
-      Canvas {
-        id: barRing
-
-        readonly property real fraction: root.counts.total > 0 ? root.counts.done / root.counts.total : 0
-        readonly property bool pending: root.unseen > 0
-        readonly property color fg: barButton.foreground
-        readonly property color dot: Commons.Color.accent
-
-        onFractionChanged: requestPaint()
-        onPendingChanged: requestPaint()
-        onFgChanged: requestPaint()
-        onDotChanged: requestPaint()
-        onWidthChanged: requestPaint()
-
-        onPaint: {
-          const ctx = getContext("2d");
-          const size = Math.min(width, height);
-          ctx.reset();
-          root.paintRing(ctx, width / 2, height / 2, size / 2, fraction, Qt.rgba(fg.r, fg.g, fg.b, 0.3), fg);
-          if (!pending)
-            return;
-          // The dot sits on the ring's top-right, with a clear gap cut around
-          // it so it reads on any bar background.
-          const dr = size * 0.17;
-          const dx = width - dr;
-          const dy = dr;
-          ctx.globalCompositeOperation = "destination-out";
-          ctx.beginPath();
-          ctx.arc(dx, dy, dr + size * 0.07, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.globalCompositeOperation = "source-over";
-          ctx.fillStyle = dot;
-          ctx.beginPath();
-          ctx.arc(dx, dy, dr, 0, 2 * Math.PI);
-          ctx.fill();
-        }
-      }
-    }
+    // A font glyph like every other bar icon, so it takes the bar's own size
+    // and centring: a circle that fills in eighths as you check items off.
+    text: root.progressGlyph
     tooltipText: root.unseen > 0 ? strings.tn("bar.tooltipCount", root.unseen).arg(Commons.I18n.formatNumber(root.unseen)) : strings.t("bar.tooltip")
 
     onPressed: function (mouseButton) {
