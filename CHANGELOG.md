@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.2 — 2026-11-13
+
+- An item's full text keeps the structure of the notes instead of running
+  together as one block: paragraphs are spaced apart, bullets hang, the line
+  that introduces a list ("Some shortcuts moved:") is a small label over it,
+  and code blocks are set in from a rule. The Homebrew line in "Omarchy on
+  Apple Silicon", which was dropped before, now shows.
+- Keys, commands and paths are drawn in the foreground against the dim prose,
+  and a short key chord such as Super + Ctrl + Alt + E no longer breaks
+  across lines. A sentence that lists key bindings, like the new defaults
+  under "Changed hotkeys", is shown as a list.
+
 ## 1.6.1 — 2026-11-12
 
 - The bar icon is a font glyph, a circle that fills in eighths, so it takes

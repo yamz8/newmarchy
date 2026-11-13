@@ -165,6 +165,11 @@ Panel {
     root.refreshItems();
   }
 
+  // A detail block as escaped StyledText, its code spans in the foreground.
+  function styled(text) {
+    return N.styledText(text, String(root.foreground));
+  }
+
   function toggleExpanded(item) {
     if (!item)
       return;
@@ -872,18 +877,24 @@ Panel {
         }
 
         // Collapsed: the first line of the detail, or why it was ticked.
-        // Expanded: the whole detail.
         Text {
           Layout.fillWidth: true
-          visible: text !== ""
-          text: itemRow.item.expanded ? String(itemRow.item.detail || "") : itemRow.item.used ? strings.t("item.used") : String(itemRow.item.detail || "").split("\n")[0].replace(/^\s*•\s*/, "")
+          visible: !itemRow.item.expanded && text !== ""
+          text: itemRow.item.used ? strings.t("item.used") : String(itemRow.item.detail || "").split("\n")[0].replace(/^\s*•\s*/, "")
           textFormat: Text.PlainText
           color: root.dim
           font.family: root.fontFamily
           font.pixelSize: Style.font.caption
-          wrapMode: itemRow.item.expanded ? Text.WordWrap : Text.NoWrap
+          wrapMode: Text.NoWrap
           elide: Text.ElideRight
-          lineHeight: itemRow.item.expanded ? 1.15 : 1
+        }
+
+        // Expanded: the whole detail, in its paragraphs, lists and code.
+        DetailBlocks {
+          Layout.fillWidth: true
+          Layout.topMargin: Style.space(2)
+          visible: !!itemRow.item.expanded
+          blocks: !itemRow.item.expanded ? [] : itemRow.item.blocks && itemRow.item.blocks.length > 0 ? itemRow.item.blocks : itemRow.item.detail ? [{ kind: "p", text: String(itemRow.item.detail), plain: String(itemRow.item.detail) }] : []
         }
       }
 
@@ -896,6 +907,103 @@ Panel {
         fontFamily: root.fontFamily
         hasCursor: itemRow.hasCursor
         onClicked: root.tryItem(itemRow.item)
+      }
+    }
+  }
+  // An item's full text in the shape the notes gave it (N.finishBlocks):
+  // paragraphs with room between them, bullets on a hanging indent, the line
+  // that introduces a list as a small uppercase label over it, and code
+  // blocks set in from a rule. Keys, commands and paths are in the
+  // foreground against the dim prose, so they can be picked out at a glance.
+  // Prose is StyledText, but only as N.styledText returns it: everything from
+  // the notes escaped, and the one tag in it the color added for code.
+  component DetailBlocks: Column {
+    id: detail
+
+    property var blocks: []
+
+    Repeater {
+      model: detail.blocks
+
+      Item {
+        id: block
+
+        required property var modelData
+        required property int index
+
+        readonly property string kind: String(modelData.kind || "p")
+        readonly property string before: index > 0 ? String(detail.blocks[index - 1].kind || "") : ""
+        readonly property real marker: Style.space(12)
+        readonly property real indent: kind === "li" ? marker * (modelData.depth ? 2 : 1) : kind === "pre" ? Style.space(8) : 0
+        // Bullets of one list sit close; a label opens a new group.
+        readonly property real gap: index === 0 ? 0 : kind === "lead" ? Style.space(10) : kind === "li" && (before === "li" || before === "lead") ? Style.space(3) : Style.space(6)
+
+        width: detail.width
+        implicitHeight: gap + (kind === "lead" ? label.implicitHeight : kind === "pre" ? code.implicitHeight : prose.implicitHeight)
+
+        Text {
+          id: label
+          visible: block.kind === "lead"
+          y: block.gap
+          width: parent.width
+          text: visible ? String(block.modelData.plain || "").replace(/:\s*$/, "").toUpperCase() : ""
+          textFormat: Text.PlainText
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 1
+          wrapMode: Text.WordWrap
+        }
+
+        Text {
+          visible: block.kind === "li"
+          x: block.indent - block.marker
+          anchors.baseline: prose.baseline
+          text: "•"
+          textFormat: Text.PlainText
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        Rectangle {
+          visible: block.kind === "pre"
+          y: block.gap
+          width: Math.max(1, Style.spacing.hairline)
+          height: code.implicitHeight
+          color: root.dim
+        }
+
+        Text {
+          id: code
+          visible: block.kind === "pre"
+          x: block.indent
+          y: block.gap
+          width: parent.width - x
+          text: visible ? String(block.modelData.plain || "") : ""
+          textFormat: Text.PlainText
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WrapAnywhere
+          lineHeight: 1.15
+        }
+
+        Text {
+          id: prose
+          visible: block.kind === "p" || block.kind === "li"
+          x: block.indent
+          y: block.gap
+          width: parent.width - x
+          text: visible ? root.styled(block.modelData.text) : ""
+          textFormat: Text.StyledText
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+          lineHeight: 1.15
+          Accessible.name: String(block.modelData.plain || "")
+        }
       }
     }
   }

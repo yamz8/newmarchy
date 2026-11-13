@@ -341,6 +341,81 @@ test("page text is plain: tags stripped before entities are decoded", () => {
   assert.equal(section.items[0].detail, "It’s here — now.")
 })
 
+// Code markers, shown as ⟦ ⟧ so the expectations can be read.
+const shown = (text) => text.replace(//g, "⟦").replace(//g, "⟧")
+const blockList = (item) => item.blocks.map((b) => [b.kind + (b.depth ? "1" : ""), shown(b.text)])
+
+test("the post's topics keep their paragraphs, lists and code as blocks", () => {
+  const items = plain(N.parseNewsPage(page))[0].items
+  const hotkeys = items.find((i) => i.title === "Changed hotkeys")
+  const kinds = blockList(hotkeys)
+  assert.deepEqual(kinds[0], ["lead", "Some shortcuts moved:"])
+  assert.deepEqual(kinds[1], ["li", "Calculator: ⟦Super + Ctrl + Q⟧ is now ⟦Super + Shift + Q⟧."])
+  assert.deepEqual(kinds.filter(([kind]) => kind === "lead").map(([, text]) => text), [
+    "Some shortcuts moved:",
+    "Notification shortcuts changed:",
+    "A few keys work differently:",
+    "New defaults that could collide with bindings of your own:"
+  ])
+  // The closing sentence of key bindings becomes a list of its own.
+  assert.deepEqual(kinds.at(-1), ["li", "holding ⟦Right Alt⟧ for push-to-talk dictation"])
+  assert.ok(kinds.some(([kind, text]) => kind === "li" && text === "⟦Super + A⟧ (select all)"))
+
+  const mac = items.find((i) => i.title === "Omarchy on Apple Silicon")
+  assert.deepEqual(blockList(mac).map(([kind]) => kind), ["p", "pre", "p", "p"])
+  assert.equal(mac.blocks[1].text, "brew install omacom/mac/omarchy")
+
+  for (const item of items) {
+    assert.equal(item.detail, N.blocksText(item.blocks).slice(0, N.MAX_DETAIL))
+    for (const block of item.blocks) assert.doesNotMatch(block.plain, /[]/)
+  }
+})
+
+test("GitHub's markdown keeps its code spans, fences and nesting as blocks", () => {
+  const highlights = plain(N.parseNotes(rcBody)).find((s) => s.title === "Highlights")
+  assert.deepEqual(blockList(highlights.items[1]), [["p", "⟦Super + L⟧ now cycles layouts."]])
+  const breaking = plain(N.parseNotes(rcBody))[0]
+  assert.deepEqual(blockList(breaking.items[1]), [
+    ["li", "Calculator: ⟦Super + Ctrl + Q⟧ is now ⟦Super + Shift + Q⟧."],
+    ["li", "Nightlight no longer has a shortcut."]
+  ])
+  const [section] = plain(N.parseNotes("## Notes\n\n### Moved\n\nRun this:\n\n```\nmv a b\n  mv c d\n```\n\n- outer\n  - inner\n"))
+  assert.deepEqual(blockList(section.items[0]), [["p", "Run this:"], ["pre", "mv a b\n  mv c d"]])
+  const [tail] = plain(N.parseNotes("## Notes\n\n**Lead.** Text.\n\n- outer\n  - inner\n"))
+  assert.deepEqual(blockList(tail.items[0]), [["p", "Text."], ["li", "outer"], ["li", "inner"]])
+})
+
+test("a sentence with a colon and commas stays a paragraph unless it lists code", () => {
+  const prose = '<article><h2>Note</h2><p>Three things: speed, polish, and care for detail.</p></article>'
+  assert.deepEqual(blockList(plain(N.parseNewsPage(prose))[0].items[0]), [["p", "Three things: speed, polish, and care for detail."]])
+  const keys = '<article><h2>Keys</h2><p>New: <code>A</code> (one, two), <code>B</code>, <code>C</code>, and <code>D</code>.</p></article>'
+  assert.deepEqual(blockList(plain(N.parseNewsPage(keys))[0].items[0]), [
+    ["lead", "New:"], ["li", "⟦A⟧ (one, two)"], ["li", "⟦B⟧"], ["li", "⟦C⟧"], ["li", "⟦D⟧"]
+  ])
+})
+
+test("downloaded text cannot forge a code span", () => {
+  const html = '<article><h2>X</h2><p>a b c &#xE000;d&#57345; <code>e</code></p></article>'
+  const [item] = plain(N.parseNewsPage(html))[0].items
+  assert.equal(shown(item.blocks[0].text), "a b c d ⟦e⟧")
+  const [section] = plain(N.parseNotes("## Notes\n\n### T\n\nx y `z`\n"))
+  assert.equal(shown(section.items[0].blocks[0].text), "x y ⟦z⟧")
+})
+
+test("styled text escapes everything and adds only the code color", () => {
+  const text = 'Run <img src="x"> & Super + L, then a "long" command that goes past thirty-two chars'
+  assert.equal(
+    N.styledText(text, "#e0e0e0"),
+    'Run &lt;img src=&quot;x&quot;&gt; &amp; <font color="#e0e0e0">Super&nbsp;+&nbsp;L</font>, then ' +
+      '<font color="#e0e0e0">a &quot;long&quot; command that goes past thirty-two chars</font>'
+  )
+  // A color that is not plain hex is never written into a tag.
+  assert.equal(N.styledText("<b>", '"><img src=x>'), "&lt;b&gt;")
+  // Unbalanced markers still give balanced tags.
+  assert.equal(N.styledText("a b", "#ffffff"), 'a <font color="#ffffff">b</font>')
+  assert.equal(N.styledText("a b", "#ffffff"), "a b")
+})
+
 test("a page without an article gives nothing, and the notes stay as they were", () => {
   assert.deepEqual(plain(N.parseNewsPage("<html><h2>X</h2><p>y</p></html>")), [])
   const notes = N.notesFor(N.parseReleases(feed), "v4.5.0")

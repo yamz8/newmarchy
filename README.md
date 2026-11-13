@@ -13,7 +13,10 @@ after an update you can tell what's new and know you've actually seen it.
   in page order, with each of the new default apps on a line of its own. The long lists under them (More features, Security, Fixes)
   sit collapsed underneath, readable but not counted.
 - **Click an item** to read its full text, and **tick its box** once you've
-  seen it.
+  seen it. The text keeps the notes' shape: paragraphs apart, bullets on a
+  hanging indent, the line that introduces a list as a small label over it,
+  code blocks set in from a rule, and keys, commands and paths in the full
+  foreground so they stand out from the prose.
 - **Try it**: the ▶ button on a row opens the feature when there is
   something to open (the language picker, workspace layouts, Elsewhen, the
   Quake console, the background picker, a test notification), and ticks the
@@ -57,8 +60,10 @@ omarchy-shell yamz8.newmarchy refresh
 The [GitHub releases](https://github.com/omacom/omarchy/releases) of
 `omacom/omarchy`, fetched over HTTPS when the shell starts and when the panel
 opens (at most once every ten minutes). There is no background polling. Each
-response is capped at 4 MiB and every title and description is bounded and
-rendered as plain text.
+response is capped at 4 MiB and every title and description is bounded.
+Titles are rendered as plain text. An expanded item's prose is Qt StyledText,
+built only after every character from the network has been escaped; the one
+tag in it is the color newmarchy puts around code.
 
 A stable release such as v4.5.0 is a short summary on GitHub with a link to
 its post on omarchy.org. When the release links to
