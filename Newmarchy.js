@@ -55,11 +55,30 @@ function safeReleaseUrl(value, tag) {
   return tag ? expected + encodeURIComponent(tag) : RELEASES_PAGE
 }
 
+// Inline code (a key, a command, a path) is carried through the parser
+// between these two private-use characters, so the expanded row can set it
+// apart from the prose around it. They are removed from anything downloaded
+// before the parser adds its own, and plainText() drops them for every place
+// that shows text as it is.
+var CODE_OPEN = ""
+var CODE_CLOSE = ""
+var MARKERS = /[]/g
+
+function plainText(text) {
+  return String(text || "").replace(MARKERS, "")
+}
+
 // Inline markdown to plain text. Links keep their text, images go, emphasis
 // and code marks are dropped. The result is still displayed with
 // Text.PlainText; this is about readability, not safety.
 function plainInline(text) {
+  return plainText(inlineSpans(text))
+}
+
+// The same, with code spans kept between the markers above.
+function inlineSpans(text) {
   return String(text || "")
+    .replace(MARKERS, "")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/\[([^\]]+)\]\((?:[^()]|\([^)]*\))*\)/g, "$1")
     // Only the HTML a release body actually uses. A blanket tag strip would
@@ -68,9 +87,132 @@ function plainInline(text) {
     .replace(/\*\*([^*]+)\*\*/g, "$1")
     .replace(/__([^_]+)__/g, "$1")
     .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s.,;:!?)]|$)/g, "$1$2")
-    .replace(/`([^`]+)`/g, "$1")
+    .replace(/`([^`]+)`/g, CODE_OPEN + "$1" + CODE_CLOSE)
     .replace(/[ \t]+/g, " ")
     .trim()
+}
+
+// An item's text as blocks, for the expanded row: [{ kind, text, plain }].
+//   p      a paragraph
+//   lead   a paragraph ending in ":" with a list under it ("Some shortcuts
+//          moved:"), shown as a label over that list
+//   li     a bullet; depth 1 when nested under another
+//   pre    a code block, its lines as they were
+// text carries the code markers, plain does not. A run of more than
+// MAX_BLOCKS, or more than MAX_DETAIL characters, is cut there.
+var MAX_BLOCKS = 60
+
+// "New defaults that could collide with bindings of your own: Super + Q
+// (close window), Super + A (select all), …, and holding Right Alt for
+// dictation." is a list written as a sentence. A paragraph with a short
+// label before its first colon, then at least four parts split at top-level
+// commas, most of them opening on a code span, becomes that label and a
+// bullet per part. Commas inside brackets or code do not split.
+function inlineList(text) {
+  var colon = -1
+  var cuts = []
+  var depth = 0
+  var inCode = false
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charAt(i)
+    if (c === CODE_OPEN) inCode = true
+    else if (c === CODE_CLOSE) inCode = false
+    else if (inCode) continue
+    else if (c === "(" || c === "[") depth++
+    else if ((c === ")" || c === "]") && depth > 0) depth--
+    else if (depth === 0 && c === ":" && colon < 0) colon = i
+    else if (depth === 0 && c === "," && colon >= 0) cuts.push(i)
+  }
+  if (colon < 1 || colon > 100 || cuts.length < 3) return null
+  var parts = []
+  var from = colon + 1
+  cuts.push(text.length)
+  for (var k = 0; k < cuts.length; k++) {
+    var part = text.slice(from, cuts[k]).trim().replace(/^(?:and|or)\s+/, "")
+    from = cuts[k] + 1
+    if (k === cuts.length - 1) part = part.replace(/\.$/, "")
+    if (part === "" || part.length > 160) return null
+    parts.push(part)
+  }
+  var keyed = 0
+  for (var p = 0; p < parts.length; p++) if (parts[p].charAt(0) === CODE_OPEN) keyed++
+  if (keyed < parts.length * 0.75) return null
+  var out = [{ kind: "lead", text: text.slice(0, colon + 1) }]
+  for (var q = 0; q < parts.length; q++) out.push({ kind: "li", text: parts[q] })
+  return out
+}
+
+function finishBlocks(source) {
+  var blocks = []
+  for (var s = 0; s < source.length; s++) {
+    var list = source[s].kind === "p" ? inlineList(source[s].text) : null
+    blocks = blocks.concat(list || [source[s]])
+  }
+  var out = []
+  var size = 0
+  for (var i = 0; i < blocks.length && out.length < MAX_BLOCKS && size < MAX_DETAIL; i++) {
+    var block = blocks[i]
+    var text = clip(block.kind === "pre" ? block.text.replace(/\s+$/, "") : block.text.trim(), MAX_DETAIL - size)
+    if (plainText(text).trim() === "") continue
+    var kind = block.kind
+    var next = blocks[i + 1]
+    if (kind === "p" && next && next.kind === "li" && /:$/.test(plainText(text))) kind = "lead"
+    out.push({ kind: kind, depth: block.depth ? 1 : 0, text: text, plain: plainText(text) })
+    size += text.length
+  }
+  return out
+}
+
+// The blocks as one plain string, the shape an item's detail has always had:
+// a line per paragraph, "• " before a bullet, code indented two spaces.
+function blocksText(blocks) {
+  var lines = []
+  for (var i = 0; i < blocks.length; i++) {
+    var block = blocks[i]
+    if (block.kind === "li") lines.push((block.depth ? "  • " : "• ") + block.plain)
+    else if (block.kind === "pre") lines.push("  " + block.plain.split("\n").join("\n  "))
+    else lines.push(block.plain)
+  }
+  return lines.join("\n")
+}
+
+// A block's text as Qt StyledText for the expanded row. Every character from
+// the notes is escaped, so nothing downloaded can be read as markup; the only
+// tags are the ones added here, a <font> around each code span in codeColor
+// (a "#rrggbb" or "#aarrggbb", else the spans are left in the text color).
+// A short span keeps its spaces from breaking, so "Super + Ctrl + Alt + E"
+// stays on one line.
+function styledText(text, codeColor) {
+  var color = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(String(codeColor || "")) ? String(codeColor) : ""
+  var source = String(text || "")
+  var out = ""
+  var span = null
+  function flush() {
+    if (span === null) return
+    // StyledText folds a raw no-break space into a plain one; the entity holds.
+    var body = escapeMarkup(span)
+    if (span.length <= 32) body = body.replace(/ /g, "&nbsp;")
+    out += color ? "<font color=\"" + color + "\">" + body + "</font>" : body
+    span = null
+  }
+  for (var i = 0; i < source.length; i++) {
+    var c = source.charAt(i)
+    if (c === CODE_OPEN) {
+      if (span === null) span = ""
+    } else if (c === CODE_CLOSE) {
+      flush()
+    } else if (span !== null) {
+      span += c
+    } else {
+      out += escapeMarkup(c)
+    }
+  }
+  flush()
+  return out
+}
+
+function escapeMarkup(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
 
 // A changelog bullet ends in attribution: "by @dhh in #14433", or
@@ -122,7 +264,7 @@ function bulletText(line) {
   return line.replace(/^\s*[-*+]\s+(\[[ xX]\]\s+)?/, "")
 }
 
-// Release notes -> [{ title, key, breaking, items: [{ id, title, detail }] }].
+// Release notes -> [{ title, key, breaking, items: [{ id, title, detail, blocks }] }].
 //
 // Inside each "## " section:
 //   ### heading        an item; the prose under it is the detail
@@ -143,36 +285,48 @@ function parseNotes(body) {
   var leadOwnsBullets = false
   var inFence = false
   var itemCount = 0
-  var sectionProse = []
+  var sectionBlocks = []
+  var fence = null
 
-  function addDetail(target, line) {
-    if (target.detail.length >= MAX_DETAIL) return
-    target.detail = target.detail === "" ? line : target.detail + "\n" + line
+  // target is an item, or the section's own blocks while it has no item.
+  function blocksOf(target) {
+    return target ? target.blocks : sectionBlocks
+  }
+
+  function addBlock(target, kind, text, depth) {
+    var blocks = blocksOf(target)
+    if (blocks.length >= MAX_BLOCKS || text === "") return null
+    var block = { kind: kind, text: text, depth: depth || 0 }
+    blocks.push(block)
+    return block
   }
 
   function finishSection() {
     if (!section) return
-    if (section.items.length === 0 && sectionProse.length > 0 && itemCount < MAX_ITEMS) {
-      section.items.push({ id: itemId(section.title, section.title), title: section.title, detail: sectionProse.join("\n") })
+    if (section.items.length === 0 && sectionBlocks.length > 0 && itemCount < MAX_ITEMS) {
+      section.items.push({ id: itemId(section.title, section.title), title: section.title, blocks: sectionBlocks })
       itemCount++
     }
     for (var i = 0; i < section.items.length; i++) {
-      section.items[i].title = clip(section.items[i].title, MAX_TITLE)
-      section.items[i].detail = clip(section.items[i].detail.replace(/\n{3,}/g, "\n\n").trim(), MAX_DETAIL)
+      var entry = section.items[i]
+      entry.title = clip(entry.title, MAX_TITLE)
+      entry.blocks = finishBlocks(entry.blocks)
+      entry.detail = clip(blocksText(entry.blocks), MAX_DETAIL)
     }
     if (section.items.length > 0 && sections.length < MAX_SECTIONS) sections.push(section)
     section = null
     item = null
-    sectionProse = []
+    sectionBlocks = []
   }
 
-  function addItem(title, detail, ownsBullets) {
+  function addItem(title, firstParagraph, ownsBullets) {
     item = null
     leadOwnsBullets = false
     if (!section || title === "" || itemCount >= MAX_ITEMS) return
     for (var i = 0; i < section.items.length; i++)
       if (section.items[i].title === title) return
-    item = { id: itemId(section.title, title), title: title, detail: detail || "" }
+    item = { id: itemId(section.title, title), title: title, blocks: [] }
+    addBlock(item, "p", firstParagraph || "")
     section.items.push(item)
     leadOwnsBullets = ownsBullets
     itemCount++
@@ -184,11 +338,15 @@ function parseNotes(body) {
 
     if (/^(```|~~~)/.test(line)) {
       inFence = !inFence
+      fence = null
       continue
     }
     if (inFence) {
-      if (section && item) addDetail(item, "  " + raw.replace(/\s+$/, ""))
-      else if (section) sectionProse.push("  " + raw.trim())
+      if (!section) continue
+      // One block per fence, its lines as written.
+      var code = raw.replace(MARKERS, "").replace(/\s+$/, "")
+      if (fence) fence.text += "\n" + code
+      else fence = addBlock(item, "pre", code)
       continue
     }
 
@@ -214,26 +372,22 @@ function parseNotes(body) {
 
     var lead = boldLead(line)
     if (lead) {
-      addItem(lead.title, plainInline(lead.rest), true)
+      addItem(lead.title, inlineSpans(lead.rest), true)
       continue
     }
 
     if (isBullet(raw)) {
-      var bullet = plainInline(bulletText(raw))
-      if (bullet === "") continue
-      if (item && leadOwnsBullets) addDetail(item, "• " + stripAttribution(bullet))
-      else if (item && /^\s{2,}/.test(raw)) addDetail(item, "  • " + stripAttribution(bullet))
-      else addItem(stripAttribution(bullet), "", false)
+      var bullet = inlineSpans(bulletText(raw))
+      if (plainText(bullet) === "") continue
+      if (item && leadOwnsBullets) addBlock(item, "li", stripAttribution(bullet))
+      else if (item && /^\s{2,}/.test(raw)) addBlock(item, "li", stripAttribution(bullet), 1)
+      else addItem(plainText(stripAttribution(bullet)), "", false)
       continue
     }
 
-    var prose = plainInline(line)
-    if (prose === "") continue
-    if (item) {
-      addDetail(item, prose)
-    } else {
-      sectionProse.push(prose)
-    }
+    var prose = inlineSpans(line)
+    if (plainText(prose) === "") continue
+    addBlock(item, "p", prose)
   }
   finishSection()
 
@@ -337,6 +491,7 @@ function decodeEntities(text) {
   return String(text || "").replace(/&(#x[0-9a-f]{1,6}|#\d{1,7}|[a-z]{2,8});/gi, function (whole, name) {
     if (name.charAt(0) === "#") {
       var code = name.charAt(1) === "x" || name.charAt(1) === "X" ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10)
+      if (code === 0xe000 || code === 0xe001) return ""
       return code > 0 && code <= 0x10ffff && (code < 0xd800 || code > 0xdfff) ? String.fromCodePoint(code) : ""
     }
     var key = name.toLowerCase()
@@ -348,7 +503,23 @@ function decodeEntities(text) {
 // are decoded, so a decoded "<" can never become markup. The result is
 // still displayed with Text.PlainText.
 function htmlText(fragment) {
-  return decodeEntities(String(fragment || "").replace(/<[^>]*>/g, "")).replace(/\s+/g, " ").trim()
+  return plainText(htmlSpans(fragment))
+}
+
+// The same, with each <code> kept between the code markers.
+function htmlSpans(fragment) {
+  var marked = String(fragment || "")
+    .replace(MARKERS, "")
+    .replace(/<code\b[^>]*>/gi, CODE_OPEN)
+    .replace(/<\/code\s*>/gi, CODE_CLOSE)
+    .replace(/<[^>]*>/g, "")
+  return decodeEntities(marked).replace(/\s+/g, " ").replace(/\uE000\uE001/g, "").trim()
+}
+
+// A <pre> block's text with its lines kept.
+function htmlPre(fragment) {
+  var text = decodeEntities(String(fragment || "").replace(MARKERS, "").replace(/<[^>]*>/g, ""))
+  return text.replace(/[ \t]+$/gm, "").replace(/^\n+|\s+$/g, "")
 }
 
 // The <article> of an omarchy.org news post -> the same shape parseNotes
@@ -370,28 +541,33 @@ function parseNewsPage(html) {
 
   var blocks = []
   var block = null
-  var tokens = /<(h2|p|li)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi
+  var tokens = /<(h2|p|li|pre)\b[^>]*>([\s\S]*?)<\/\1\s*>/gi
   var match
   while ((match = tokens.exec(text)) !== null) {
     var tag = match[1].toLowerCase()
     if (tag === "h2") {
       var heading = clip(htmlText(match[2]), MAX_TITLE)
-      block = heading === "" ? null : { title: heading, prose: 0, lines: [], bullets: [], named: [] }
+      block = heading === "" ? null : { title: heading, prose: 0, blocks: [], bullets: [], named: [] }
       if (block) blocks.push(block)
       continue
     }
     if (!block) continue
+    if (tag === "pre") {
+      var code = htmlPre(match[2])
+      if (code !== "") block.blocks.push({ kind: "pre", text: code })
+      continue
+    }
     if (tag === "p") {
-      var para = htmlText(match[2])
-      if (para !== "") {
+      var para = htmlSpans(match[2])
+      if (plainText(para) !== "") {
         block.prose++
-        block.lines.push(para)
+        block.blocks.push({ kind: "p", text: para })
         // A paragraph that opens on a bold name ("<strong>Hype</strong>
         // makes…", "And there's <strong>Elsewhen</strong>…") introduces one
         // thing of its own.
         var lead = NAMED_PARAGRAPH.exec(match[2])
         var name = lead ? clip(htmlText(lead[1]), MAX_TITLE) : ""
-        if (name !== "") block.named.push({ title: name, detail: para })
+        if (name !== "") block.named.push({ title: name, blocks: [{ kind: "p", text: para }] })
       }
       continue
     }
@@ -401,14 +577,19 @@ function parseNewsPage(html) {
     var inner = /<p\b[^>]*>([\s\S]*?)<\/p\s*>/gi
     var p
     while ((p = inner.exec(match[2])) !== null) {
-      var part = htmlText(p[1])
-      if (part !== "") parts.push(part)
+      var part = htmlSpans(p[1])
+      if (plainText(part) !== "") parts.push({ kind: "p", text: part })
     }
-    if (parts.length === 0) parts.push(htmlText(match[2]))
-    var bullet = stripAttribution(parts[0])
-    if (bullet === "") continue
-    block.bullets.push({ title: bullet, detail: parts.slice(1).join("\n") })
-    block.lines.push("• " + bullet)
+    if (parts.length === 0) parts.push({ kind: "p", text: htmlSpans(match[2]) })
+    var bullet = stripAttribution(parts[0].text)
+    if (plainText(bullet) === "") continue
+    block.bullets.push({ title: plainText(bullet), blocks: parts.slice(1) })
+    block.blocks.push({ kind: "li", text: bullet })
+  }
+
+  function entry(section, title, blocks) {
+    var finished = finishBlocks(blocks)
+    return { id: itemId(section, title), title: title, detail: clip(blocksText(finished), MAX_DETAIL), blocks: finished }
   }
 
   // The page puts no heading over its topics, so neither does the panel.
@@ -423,7 +604,7 @@ function parseNewsPage(html) {
       var list = { title: b.title, key: false, breaking: false, items: [] }
       for (var j = 0; j < b.bullets.length && itemCount < MAX_ITEMS; j++) {
         var title = clip(b.bullets[j].title, MAX_TITLE)
-        list.items.push({ id: itemId(b.title, title), title: title, detail: clip(b.bullets[j].detail, MAX_DETAIL) })
+        list.items.push(entry(b.title, title, b.bullets[j].blocks))
         itemCount++
       }
       lists.push(list)
@@ -434,14 +615,14 @@ function parseNewsPage(html) {
     // apps", lists each thing in its place, so each can be tried and ticked.
     if (b.named.length >= 2) {
       for (var n = 0; n < b.named.length && itemCount < MAX_ITEMS; n++) {
-        topics.items.push({ id: itemId("Highlights", b.named[n].title), title: b.named[n].title, detail: clip(b.named[n].detail, MAX_DETAIL) })
+        topics.items.push(entry("Highlights", b.named[n].title, b.named[n].blocks))
         itemCount++
       }
       continue
     }
     // Paragraphs and bullets in page order, so a topic such as "Changed
     // hotkeys" keeps each list under the line that introduces it.
-    topics.items.push({ id: itemId("Highlights", b.title), title: b.title, detail: clip(b.lines.join("\n"), MAX_DETAIL) })
+    topics.items.push(entry("Highlights", b.title, b.blocks))
     itemCount++
   }
   return (topics.items.length > 0 ? [topics] : []).concat(lists)
@@ -560,7 +741,7 @@ function checklist(notes) {
     if (hasKey && !section.key) continue
     for (var j = 0; j < section.items.length; j++) {
       var entry = section.items[j]
-      items.push({ id: entry.id, title: entry.title, detail: entry.detail, section: section.title, breaking: section.breaking })
+      items.push({ id: entry.id, title: entry.title, detail: entry.detail, blocks: entry.blocks || [], section: section.title, breaking: section.breaking })
     }
   }
   return items
